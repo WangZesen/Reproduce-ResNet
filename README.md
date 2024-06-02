@@ -36,6 +36,11 @@ pip install --extra-index-url https://pypi.nvidia.com --upgrade nvidia-dali-cuda
 pip install wandb seaborn loguru scipy tqdm tomli-w pydantic
 ```
 
+One has to login to wandb for uploading the metrics before runing the experiments.
+```
+wandb login
+```
+
 ### Prepare Data
 
 Since it needs to sign an agreement for downloading the dataset, only an instruction is provided here.
