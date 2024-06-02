@@ -94,8 +94,8 @@ def main():
 
     os.makedirs('image', exist_ok=True)
     plot(interp_log, 'time', 'val_acc1', 'image/time_vs_acc1.png')
-    plot(train_log, 'step', 'val_acc5', 'image/step_vs_acc1.png')
-    plot(interp_log, 'time', 'val_acc1', 'image/time_vs_acc5.png')
+    plot(train_log, 'step', 'val_acc1', 'image/step_vs_acc1.png')
+    plot(interp_log, 'time', 'val_acc5', 'image/time_vs_acc5.png')
     plot(train_log, 'step', 'val_acc5', 'image/step_vs_acc5.png')
 
     logger.info(f'Plots generated at image/ directory')
