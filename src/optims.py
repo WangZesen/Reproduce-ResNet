@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.optim import Optimizer, Adam, SGD
+from torch.optim import Optimizer, Adam, SGD, AdamW
 from torch.optim.lr_scheduler import LRScheduler
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -25,6 +25,11 @@ def get_optim(cfg: "Config", model: nn.Module) -> Optimizer:
             return SGD(get_params(model, cfg.train.optim.weight_decay),
                        lr=cfg.train.lr,
                        momentum=cfg.train.optim.sgd.momentum)
+        case "adamw":
+            return AdamW(get_params(model, cfg.train.optim.weight_decay),
+                         lr=cfg.train.lr,
+                         betas=(cfg.train.optim.adam.beta1, cfg.train.optim.adam.beta2),
+                         eps=cfg.train.optim.adam.epsilon)
         case _:
             raise ValueError(f"Unknown optimizer: {cfg.train.optim.name}")
 

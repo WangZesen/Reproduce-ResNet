@@ -1,4 +1,4 @@
-# Reproduce Training ResNet50 on ImageNet
+# Reproduce Image Classification on ImageNet
 
 ## Introduction
 

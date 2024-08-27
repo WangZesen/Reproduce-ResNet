@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.distributed as dist
-from typing import List
+from typing import List, cast
 from statistics import mean
 from collections import deque
 from loguru import logger
@@ -74,6 +74,7 @@ def gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples) -> 
     if dist.is_available() and dist.is_initialized():
         object_list = [None for _ in range(dist.get_world_size())]
         dist.all_gather_object(object_list, log)
+        object_list = cast(List[List[float]], object_list)
         
         log[0] = mean([x[0] for x in object_list])
         total_val_samples = sum([x[4] for x in object_list])

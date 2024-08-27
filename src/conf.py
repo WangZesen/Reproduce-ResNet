@@ -90,6 +90,7 @@ class Train(BaseModel):
     max_epochs: int = Field(default=90)
     lr: float = Field(default=0.001)
     label_smoothing: float = Field(default=0.1)
+    grad_clip_norm: float = Field(default=0.0)
     checkpoint_dir: Optional[str] = Field(default=None)
     arch: str = Field(default='resnet50')
     use_amp: bool = Field(default=True)
@@ -126,4 +127,4 @@ def parse_config() -> Config:
         'data': _load_toml(args.data_cfg),
         'train': _load_toml(args.train_cfg)
     }
-    return Config(**cfg)
+    return Config(**cfg) # type: ignore

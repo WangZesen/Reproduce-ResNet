@@ -1,0 +1,42 @@
+batch_size = 4096
+max_epochs = 300
+lr = 0.003
+label_smoothing = 0.11
+checkpoint_dir = ""
+arch = "vit_base_16"
+use_amp = true
+clip_grad_norm = 1.0
+
+[preprocess]
+preload_local = true
+interpolation = "bilinear"
+train_crop_size = 224
+val_image_size = 256
+val_crop_size = 224
+
+[optim]
+name = 'adamw'
+weight_decay = 0.3
+
+[optim.adam]
+beta1 = 0.9
+beta2 = 0.999
+epsilon = 1e-8
+
+[optim.sgd]
+momentum = 0.9
+
+[lr_scheduler]
+name = 'cosine'
+warmup_epochs = 30
+warmup_decay = 0.033
+
+[reproduce]
+seed = 810975
+
+[log]
+log_dir = './log'
+log_freq = 100
+wandb_on = true
+wandb_project = "reproduce-ImageCls"
+ckpt_freq = 45

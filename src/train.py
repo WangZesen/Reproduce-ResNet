@@ -76,6 +76,9 @@ def train_epoch(cfg: Config,
 
         # Backward pass
         scaler.scale(loss).backward()
+        if cfg.train.grad_clip_norm > 0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.train.grad_clip_norm)
         scaler.step(optimizer)
         scaler.update()
         lr_scheduler.step()
@@ -259,7 +262,7 @@ def main():
                     }
                     wandb.log(log_data, step=global_step)
 
-                train_log.loc[epoch - start_epoch] = [epoch + 1,
+                train_log.loc[epoch - start_epoch] = [epoch + 1, # type: ignore
                                                       global_step,
                                                       stats[0],
                                                       stats[1],
@@ -268,7 +271,7 @@ def main():
                                                       total_train_time,
                                                       os.path.abspath(checkpoint_dir) if checkpoint_dir else '']
             if rank == 0:
-                train_log.to_csv(os.path.join(cfg.train.log.log_dir, 'train_log.csv'), index=False)
+                train_log.to_csv(os.path.join(cfg.train.log.log_dir, 'train_log.csv'), index=False) # type: ignore
             dist.barrier()
 
     if rank == 0:

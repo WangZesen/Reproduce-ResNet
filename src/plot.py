@@ -77,8 +77,8 @@ def main():
         y_val_acc1 = train_log['val_acc1'].to_list()
         y_val_acc5 = train_log['val_acc5'].to_list()
 
-        f_val_acc1 = interp1d(x, y_val_acc1, kind='linear', fill_value='extrapolate')
-        f_val_acc5 = interp1d(x, y_val_acc5, kind='linear', fill_value='extrapolate')
+        f_val_acc1 = interp1d(x, y_val_acc1, kind='linear', fill_value='extrapolate') # type: ignore
+        f_val_acc5 = interp1d(x, y_val_acc5, kind='linear', fill_value='extrapolate') # type: ignore
 
         interp_val_acc1 = f_val_acc1(time_values[label])
         interp_val_acc5 = f_val_acc5(time_values[label])
