@@ -42,7 +42,7 @@ from data.dataloader import DALIWrapper
 from conf import parse_config, Config
 from optims import get_optim, get_lr_scheduler
 from data import preload_to_local, get_dali_train_loader, get_dali_valid_loader
-from utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy
+from utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, orth_dist, conv_orth_dist, deconv_orth_dist
 from models import load_model
 
 '''
@@ -73,6 +73,24 @@ def train_epoch(cfg: Config,
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
             pred = model(images)
             loss = criterion(pred, labels.view(-1))
+
+            diff = orth_dist(model.module.layer1[0].downsample[0].weight) + orth_dist(model.module.layer2[0].downsample[0].weight) + orth_dist(model.module.layer3[0].downsample[0].weight) + orth_dist(model.module.layer4[0].downsample[0].weight)
+            diff+= deconv_orth_dist(model.module.layer1[0].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer1[1].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer1[2].conv2.weight, stride=1) 
+            diff+= deconv_orth_dist(model.module.layer2[0].conv2.weight, stride=2) + deconv_orth_dist(model.module.layer2[1].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer2[2].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer2[3].conv2.weight, stride=1)
+            diff+= deconv_orth_dist(model.module.layer3[0].conv2.weight, stride=2) + deconv_orth_dist(model.module.layer3[1].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer3[2].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer3[3].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer3[4].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer3[5].conv2.weight, stride=1)
+            diff+= deconv_orth_dist(model.module.layer4[0].conv2.weight, stride=2) + deconv_orth_dist(model.module.layer4[1].conv2.weight, stride=1) + deconv_orth_dist(model.module.layer4[2].conv2.weight, stride=1)
+                
+            diff+= orth_dist(model.module.layer1[0].conv3.weight, stride=1) + orth_dist(model.module.layer1[1].conv3.weight, stride=1) + orth_dist(model.module.layer1[2].conv3.weight, stride=1) 
+            diff+= orth_dist(model.module.layer2[0].conv3.weight, stride=2) + orth_dist(model.module.layer2[1].conv3.weight, stride=1) + orth_dist(model.module.layer2[2].conv3.weight, stride=1) + orth_dist(model.module.layer2[3].conv3.weight, stride=1)
+            diff+= orth_dist(model.module.layer3[0].conv3.weight, stride=2) + orth_dist(model.module.layer3[1].conv3.weight, stride=1) + orth_dist(model.module.layer3[2].conv3.weight, stride=1) + orth_dist(model.module.layer3[3].conv3.weight, stride=1) + orth_dist(model.module.layer3[4].conv3.weight, stride=1) + orth_dist(model.module.layer3[5].conv3.weight, stride=1)
+            diff+= orth_dist(model.module.layer4[0].conv3.weight, stride=2) + orth_dist(model.module.layer4[1].conv3.weight, stride=1) + orth_dist(model.module.layer4[2].conv3.weight, stride=1)
+                
+            diff+= orth_dist(model.module.layer1[0].conv1.weight, stride=1) + orth_dist(model.module.layer1[1].conv1.weight, stride=1) + orth_dist(model.module.layer1[2].conv1.weight, stride=1) 
+            diff+= orth_dist(model.module.layer2[0].conv1.weight, stride=1) + orth_dist(model.module.layer2[1].conv1.weight, stride=1) + orth_dist(model.module.layer2[2].conv1.weight, stride=1) + orth_dist(model.module.layer2[3].conv1.weight, stride=1) 
+            diff+= orth_dist(model.module.layer3[0].conv1.weight, stride=1) + orth_dist(model.module.layer3[1].conv1.weight, stride=1) + orth_dist(model.module.layer3[2].conv1.weight, stride=1) + orth_dist(model.module.layer3[3].conv1.weight, stride=1)  + orth_dist(model.module.layer3[4].conv1.weight, stride=1)  + orth_dist(model.module.layer3[5].conv1.weight, stride=1) 
+            diff+= orth_dist(model.module.layer4[0].conv1.weight, stride=1) + orth_dist(model.module.layer4[1].conv1.weight, stride=1) + orth_dist(model.module.layer4[2].conv1.weight, stride=1)
+
+            loss = loss + 0.5 * diff
 
         # Backward pass
         scaler.scale(loss).backward()

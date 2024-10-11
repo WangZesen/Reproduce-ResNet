@@ -7,8 +7,8 @@ if TYPE_CHECKING:
     from conf import Config
 
 def get_params(model: nn.Module, weight_decay: float) -> list:
-    bn_params = [v for n, v in model.named_parameters() if 'bn' in n]
-    rest_params = [v for n, v in model.named_parameters() if not ('bn' in n)]
+    bn_params = [v for n, v in model.named_parameters() if ('bn' in n) or ('bias' in n)]
+    rest_params = [v for n, v in model.named_parameters() if not (('bn' in n) or ('bias' in n))]
     return [
         {"params": bn_params, "weight_decay": 0},
         {"params": rest_params, "weight_decay": weight_decay}
