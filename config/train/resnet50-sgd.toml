@@ -1,6 +1,6 @@
 batch_size = 1024
 max_epochs = 90
-lr = 1e-3
+lr = 1.0
 label_smoothing = 0.1
 checkpoint_dir = ""
 arch = "resnet50"
@@ -14,16 +14,9 @@ val_image_size = 256
 val_crop_size = 224
 
 [optim]
-name = 'adam'
+name = 'sgd'
+momentum = 0.875
 weight_decay = 0.000030517578125
-
-[optim.adam]
-beta1 = 0.9
-beta2 = 0.999
-epsilon = 1e-8
-
-[optim.sgd]
-momentum = 0.9
 
 [lr_scheduler]
 name = 'cosine'

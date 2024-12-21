@@ -1,10 +1,10 @@
 import os
 import argparse
 import tomllib
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, Final
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 
-PROJECT_DIR = os.path.relpath(os.path.join(os.path.dirname(__file__), '..'), '.')
+PROJECT_DIR: Final[str] = os.path.relpath(os.path.join(os.path.dirname(__file__), '..'), '.')
 
 class Data(BaseModel):
     data_dir: str = Field(default='./data/Imagenet')
@@ -28,14 +28,25 @@ class AdamConfig(BaseModel):
 class SGDConfig(BaseModel):
     name: Literal['sgd'] = 'sgd'
     weight_decay: float = Field(default=1e-4)
+    momentum: float = Field(default=0.875)
+
+class SGDScheduleFreeConfig(BaseModel):
+    name: Literal['sgd-schedule-free'] = 'sgd-schedule-free'
+    warmup_epochs: int = Field(default=5)
+    weight_decay: float = Field(default=1e-4)
     momentum: float = Field(default=0.9)
 
-ALL_OPTIMS = Union[AdamConfig, SGDConfig]
+ALL_OPTIMS = Union[AdamConfig, SGDConfig, SGDScheduleFreeConfig]
 
-class LRScheduler(BaseModel):
-    name: str = Field(default='cosine')
+class CosineLRSchedulerConfig(BaseModel):
+    name: Literal['cosine'] = Field(default='cosine')
     warmup_epochs: int = Field(default=5)
     warmup_decay: float = Field(default=0.01)
+
+class ConstantLRSchedulerConfig(BaseModel):
+    name: Literal['constant'] = Field(default='constant')
+
+ALL_LR_SCHEDULERS = Union[CosineLRSchedulerConfig, ConstantLRSchedulerConfig]
 
 class Reproduce(BaseModel):
     seed: int = Field(default=810975)
@@ -95,7 +106,7 @@ class Train(BaseModel):
     use_amp: bool = Field(default=True)
     preprocess: Preprocess = Field(default_factory=Preprocess)
     optim: ALL_OPTIMS = Field(default_factory=AdamConfig, discriminator='name')
-    lr_scheduler: LRScheduler = Field(default_factory=LRScheduler)
+    lr_scheduler: ALL_LR_SCHEDULERS = Field(default_factory=CosineLRSchedulerConfig, discriminator='name')
     reproduce: Reproduce = Field(default_factory=Reproduce)
     log: Log = Field(default_factory=Log)
     network: Network = Field(default_factory=Network)

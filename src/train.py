@@ -44,10 +44,14 @@ from src.data.preload import preload_to_local
 from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper
 from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy
 from src.models import load_model
+from schedulefree import SGDScheduleFree, AdamWScheduleFree
 
 '''
     Functions
 '''
+
+def is_schedule_free_optim(optim: Optimizer) -> bool:
+    return isinstance(optim, SGDScheduleFree) or isinstance(optim, AdamWScheduleFree)
 
 def train_epoch(cfg: Config,
                 model: Module,
@@ -61,6 +65,8 @@ def train_epoch(cfg: Config,
                 profiler: Any):
     start_time = time.time()
     model.train()
+    if is_schedule_free_optim(optimizer):
+        optimizer.train() # type: ignore
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
     throughput_metric = SmoothedValue(cfg.train.log.log_freq)
     if rank == 0:
@@ -104,8 +110,15 @@ def train_epoch(cfg: Config,
 
 
 @torch.no_grad()
-def valid(cfg: Config, model: Module, valid_ds: DALIWrapper, criterion: Module, epoch: int):
+def valid(cfg: Config,
+          model: Module,
+          optimizer: Optimizer,
+          valid_ds: DALIWrapper,
+          criterion: Module,
+          epoch: int):
     model.eval()
+    if is_schedule_free_optim(optimizer):
+        optimizer.eval() # type: ignore
     total_loss = 0.
     total_acc1 = 0.
     total_acc5 = 0.
@@ -167,7 +180,7 @@ def main():
         trainable_params = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters() if p.requires_grad).values())
         logger.info(f'[INFO] Model trainable parameters: {trainable_params}')
 
-    optimizer = get_optim(cfg, model)
+    optimizer = get_optim(cfg, model, num_batches)
     lr_scheduler = get_lr_scheduler(cfg, optimizer, num_batches)
     model = DDP(model, gradient_as_bucket_view=True, broadcast_buffers=True)
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
@@ -232,7 +245,7 @@ def main():
                                                                     scaler,
                                                                     profiler)
             total_train_time += epoch_train_time
-            val_loss, val_acc1, val_acc5, val_samples = valid(cfg, model, valid_ds, criterion, epoch)
+            val_loss, val_acc1, val_acc5, val_samples = valid(cfg, model, optimizer, valid_ds, criterion, epoch)
             stats = gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples)
             checkpoint_dir = ""
             if ((epoch + 1) % cfg.train.log.checkpoint_freq == 0) and (rank == 0):
