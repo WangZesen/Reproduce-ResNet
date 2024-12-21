@@ -34,16 +34,16 @@ from typing import Any
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
-from torch.cuda.amp import GradScaler
+from torch import GradScaler
 from torch.optim.lr_scheduler import LRScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.profiler import schedule, profile, ProfilerActivity
-from data.dataloader import DALIWrapper
-from conf import parse_config, Config
-from optims import get_optim, get_lr_scheduler
-from data import preload_to_local, get_dali_train_loader, get_dali_valid_loader
-from utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy
-from models import load_model
+from src.conf import parse_config, Config
+from src.optims import get_optim, get_lr_scheduler
+from src.data.preload import preload_to_local
+from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper
+from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy
+from src.models import load_model
 
 '''
     Functions
@@ -67,6 +67,7 @@ def train_epoch(cfg: Config,
         logger.info(f'[Train Epoch {epoch+1}]')
 
     for images, labels in train_ds:
+        images = images.contiguous(memory_format=torch.channels_last)
         iter_start_time = time.time()
         # Forward pass
         optimizer.zero_grad()
@@ -103,7 +104,7 @@ def train_epoch(cfg: Config,
 
 
 @torch.no_grad()
-def valid(model: Module, valid_ds: DALIWrapper, criterion: Module, epoch: int):
+def valid(cfg: Config, model: Module, valid_ds: DALIWrapper, criterion: Module, epoch: int):
     model.eval()
     total_loss = 0.
     total_acc1 = 0.
@@ -114,8 +115,10 @@ def valid(model: Module, valid_ds: DALIWrapper, criterion: Module, epoch: int):
         logger.info(f'[Validate Epoch {epoch+1}]')
 
     for images, labels in valid_ds:
-        logit = model(images)
-        loss = criterion(logit, labels.view(-1))
+        images = images.contiguous(memory_format=torch.channels_last)
+        with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+            logit = model(images)
+            loss = criterion(logit, labels.view(-1))
         acc1, acc5 = get_accuracy(logit, labels, topk=(1, 5))
         total_loss += loss.item() * images.size(0)
         total_acc1 += acc1.item() * images.size(0)
@@ -157,6 +160,7 @@ def main():
     '''
 
     model = load_model(cfg.train.arch, num_classes=cfg.data.num_classes)
+    model = model.to(memory_format=torch.channels_last) # type: ignore
     model = model.to('cuda')
 
     if rank == 0:
@@ -167,7 +171,7 @@ def main():
     lr_scheduler = get_lr_scheduler(cfg, optimizer, num_batches)
     model = DDP(model, gradient_as_bucket_view=True, broadcast_buffers=True)
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.train.use_amp)
+    scaler = torch.GradScaler(device='cuda', enabled=cfg.train.use_amp)
 
     if rank == 0:
         logger.info(cfg)
@@ -192,8 +196,8 @@ def main():
     start_epoch = 0
     total_train_time = 0.
 
-    # if cfg.train.checkpoint_dir:
-    #     load_checkpoint(train_cfg, model, optimizer, lr_scheduler, cfg.train.checkpoint_dir)
+    if cfg.train.checkpoint_dir:
+        raise NotImplementedError('Checkpoint loading is not implemented yet.')
 
     dist.barrier()
 
@@ -228,7 +232,7 @@ def main():
                                                                     scaler,
                                                                     profiler)
             total_train_time += epoch_train_time
-            val_loss, val_acc1, val_acc5, val_samples = valid(model, valid_ds, criterion, epoch + 1)
+            val_loss, val_acc1, val_acc5, val_samples = valid(cfg, model, valid_ds, criterion, epoch)
             stats = gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples)
             checkpoint_dir = ""
             if ((epoch + 1) % cfg.train.log.checkpoint_freq == 0) and (rank == 0):

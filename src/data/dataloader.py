@@ -9,10 +9,7 @@ from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 from nvidia.dali.ops import RandomResizedCrop, CropMirrorNormalize, Resize
 from nvidia.dali.ops.random import CoinFlip
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..conf import Config
+from src.conf import Config
 
 
 class DaliImageNetTrainPipeline(Pipeline):
@@ -28,10 +25,10 @@ class DaliImageNetTrainPipeline(Pipeline):
                          device_id=0,
                          seed=seed,
                          set_affinity=True)
-        interpolation = {
-            "bicubic": types.INTERP_CUBIC,
-            "bilinear": types.INTERP_LINEAR,
-            "triangular": types.INTERP_TRIANGULAR,
+        interpolation_type = {
+            "bicubic": types.DALIInterpType.INTERP_CUBIC,
+            "bilinear": types.DALIInterpType.INTERP_LINEAR,
+            "triangular": types.DALIInterpType.INTERP_TRIANGULAR,
         }[interpolation]
 
         if dist.is_initialized():
@@ -54,20 +51,21 @@ class DaliImageNetTrainPipeline(Pipeline):
 
         self.decode = Image(
             device="mixed",
-            output_type=types.RGB,
+            output_type=types.DALIImageType.RGB,
             memory_stats=True,
         )
 
         self.res = RandomResizedCrop(
             device='gpu',
             size=(crop, crop),
-            interp_type=interpolation,
+            interp_type=interpolation_type,
             random_aspect_ratio=[0.75, 4.0/3.0],
             random_area=[0.08, 1.0],
             num_attempts=100,
             antialias=False,
             seed=seed,
         )
+        self.coin = CoinFlip(probability=0.5)
         self.cmnp = CropMirrorNormalize(
             device='gpu',
             dtype=types.DALIDataType.FLOAT,
@@ -76,10 +74,9 @@ class DaliImageNetTrainPipeline(Pipeline):
             mean=[0.485 * 255, 0.456 * 255, 0.406 * 255],
             std=[0.229 * 255, 0.224 * 255, 0.225 * 255],
         )
-        self.coin = CoinFlip(probability=0.5)
     
     def define_graph(self):
-        self.jpegs, self.labels = self.input(name="Reader")
+        self.jpegs, self.labels = self.input(name="Reader") # type: ignore
         images = self.decode(self.jpegs)
         images = self.res(images)
         images = self.cmnp(images, mirror=self.coin())
@@ -95,10 +92,10 @@ class DaliImageNetValPipeline(Pipeline):
                  crop: int,
                  dont_use_mmap: bool):
         super().__init__(batch_size, num_threads=2, device_id=0)
-        interpolation = {
-            "bicubic": types.INTERP_CUBIC,
-            "bilinear": types.INTERP_LINEAR,
-            "triangular": types.INTERP_TRIANGULAR,
+        interpolation_type = {
+            "bicubic": types.DALIInterpType.INTERP_CUBIC,
+            "bilinear": types.DALIInterpType.INTERP_LINEAR,
+            "triangular": types.DALIInterpType.INTERP_TRIANGULAR,
         }[interpolation]
 
         if dist.is_initialized():
@@ -119,13 +116,13 @@ class DaliImageNetValPipeline(Pipeline):
 
         self.decode = Image(
             device="mixed",
-            output_type=types.RGB,
+            output_type=types.DALIImageType.RGB,
             memory_stats=True,
         )
         self.res = Resize(
             device='gpu',
             resize_shorter=resize,
-            interp_type=interpolation,
+            interp_type=interpolation_type,
             antialias=False
         )
         self.cmnp = CropMirrorNormalize(
@@ -138,14 +135,15 @@ class DaliImageNetValPipeline(Pipeline):
         )
 
     def define_graph(self):
-        self.jpegs, self.labels = self.input(name="Reader")
+        self.jpegs, self.labels = self.input(name="Reader") # type: ignore
         images = self.decode(self.jpegs)
         images = self.res(images)
-        images = self.cmnp(images.gpu())
+        images = self.cmnp(images.gpu()) # type: ignore
         return [images, self.labels]
 
 
 class DALIWrapper(object):
+    @staticmethod
     def gen_wrapper(dalipipeline: DALIClassificationIterator):
         for data in dalipipeline:
             input = data[0]["data"].contiguous(memory_format=torch.contiguous_format)
@@ -160,7 +158,7 @@ class DALIWrapper(object):
         return DALIWrapper.gen_wrapper(self.dalipipeline)
 
 
-def get_dali_train_loader(cfg: 'Config'):
+def get_dali_train_loader(cfg: Config):
     train_data_dir = os.path.join(cfg.data.data_dir, "train")
     pipe = DaliImageNetTrainPipeline(
         batch_size=cfg.train.batch_size_per_local_batch,
@@ -175,10 +173,10 @@ def get_dali_train_loader(cfg: 'Config'):
         pipe, reader_name="Reader", last_batch_policy=LastBatchPolicy.DROP
     )
     world_size = dist.get_world_size() if dist.is_initialized() else 1
-    return DALIWrapper(train_loader), int(pipe.epoch_size('Reader') / cfg.train.batch_size_per_local_batch / world_size)
+    return DALIWrapper(train_loader), int(pipe.epoch_size('Reader') / cfg.train.batch_size_per_local_batch / world_size) # type: ignore
 
 
-def get_dali_valid_loader(cfg: 'Config'):
+def get_dali_valid_loader(cfg: Config):
     train_data_dir = os.path.join(cfg.data.data_dir, "val")
     pipe = DaliImageNetValPipeline(
         batch_size=cfg.train.batch_size_per_local_batch,

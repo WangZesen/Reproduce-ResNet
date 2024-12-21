@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 #SBATCH -J ImageCls
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=A100:4
-#SBATCH -t 14:00:00
+#SBATCH --gpus-per-node=A40:4
+#SBATCH -t 8:00:00
 #SBATCH --switches=1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
@@ -17,5 +17,5 @@ srun $1 \
     --standalone \
     --nproc_per_node=4 \
     --rdzv-backend=c10d \
-    src/train.py --data-cfg log/$SLURM_JOB_ID/data_cfg.toml --train-cfg log/$SLURM_JOB_ID/train_cfg.toml
+    -m src.train --data-cfg log/$SLURM_JOB_ID/data_cfg.toml --train-cfg log/$SLURM_JOB_ID/train_cfg.toml
 

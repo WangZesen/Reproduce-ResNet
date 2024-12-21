@@ -1,8 +1,7 @@
 import os
 import argparse
 import tomllib
-import hashlib
-from typing import Optional, Tuple
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 
 PROJECT_DIR = os.path.relpath(os.path.join(os.path.dirname(__file__), '..'), '.')
@@ -15,23 +14,23 @@ class Data(BaseModel):
 class Preprocess(BaseModel):
     preload_local: bool = Field(default=False)
     interpolation: str = Field(default='bilinear')
-    train_crop_size: int = Field(default=224)
+    train_crop_size: int = Field(default=176)
     val_image_size: int = Field(default=256)
     val_crop_size: int = Field(default=224)
 
-class Adam(BaseModel):
+class AdamConfig(BaseModel):
+    name: Literal['adam'] = 'adam'
+    weight_decay: float = Field(default=1e-4)
     beta1: float = Field(default=0.9)
     beta2: float = Field(default=0.999)
     epsilon: float = Field(default=1e-8)
 
-class SGD(BaseModel):
+class SGDConfig(BaseModel):
+    name: Literal['sgd'] = 'sgd'
+    weight_decay: float = Field(default=1e-4)
     momentum: float = Field(default=0.9)
 
-class Optim(BaseModel):
-    name: str = Field(default='adam')
-    weight_decay: float = Field(default=1e-4)
-    adam: Adam = Field(default_factory=Adam)
-    sgd: SGD = Field(default_factory=SGD)
+ALL_OPTIMS = Union[AdamConfig, SGDConfig]
 
 class LRScheduler(BaseModel):
     name: str = Field(default='cosine')
@@ -95,7 +94,7 @@ class Train(BaseModel):
     arch: str = Field(default='resnet50')
     use_amp: bool = Field(default=True)
     preprocess: Preprocess = Field(default_factory=Preprocess)
-    optim: Optim = Field(default_factory=Optim)
+    optim: ALL_OPTIMS = Field(default_factory=AdamConfig, discriminator='name')
     lr_scheduler: LRScheduler = Field(default_factory=LRScheduler)
     reproduce: Reproduce = Field(default_factory=Reproduce)
     log: Log = Field(default_factory=Log)

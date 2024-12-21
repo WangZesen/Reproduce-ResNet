@@ -1,10 +1,9 @@
 #!/usr/bin/bash
 #SBATCH -J ImageCls
-#SBATCH --nodes=4
+#SBATCH --nodes=2
 #SBATCH --gpus-per-node=A100:4
-#SBATCH -t 12:00:00
+#SBATCH -t 6:00:00
 #SBATCH --switches=1
-#SBATCH --gres=ptmpdir:1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
 
@@ -20,7 +19,7 @@ cp $2 log/$SLURM_JOB_ID/data_cfg.toml
 cp $3 log/$SLURM_JOB_ID/train_cfg.toml
 
 srun $1 \
-    --nnodes=4 \
+    --nnodes=2 \
     --nproc_per_node=4 \
     --rdzv-backend=c10d \
     --rdzv-id=$RANDOM \

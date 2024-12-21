@@ -2,38 +2,34 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer, Adam, SGD, AdamW
 from torch.optim.lr_scheduler import LRScheduler
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from conf import Config
+from src.conf import Config, AdamConfig, SGDConfig
 
 def get_params(model: nn.Module, weight_decay: float) -> list:
-    bn_params = [v for n, v in model.named_parameters() if 'bn' in n]
-    rest_params = [v for n, v in model.named_parameters() if not ('bn' in n)]
+    bn_params = [v for n, v in model.named_parameters() if ('bn' in n) or ('bias' in n)]
+    rest_params = [v for n, v in model.named_parameters() if not (('bn' in n) or ('bias' in n))]
     return [
         {"params": bn_params, "weight_decay": 0},
         {"params": rest_params, "weight_decay": weight_decay}
     ]
 
-def get_optim(cfg: "Config", model: nn.Module) -> Optimizer:
-    match cfg.train.optim.name.lower():
+def get_optim(cfg: Config, model: nn.Module) -> Optimizer:
+    optim_cfg = cfg.train.optim
+    match optim_cfg.name.lower():
         case "adam":
-            return Adam(get_params(model, cfg.train.optim.weight_decay),
+            assert isinstance(optim_cfg, AdamConfig)
+            return Adam(get_params(model, optim_cfg.weight_decay),
                         lr=cfg.train.lr,
-                        betas=(cfg.train.optim.adam.beta1, cfg.train.optim.adam.beta2),
-                        eps=cfg.train.optim.adam.epsilon)
+                        betas=(optim_cfg.beta1,optim_cfg.beta2),
+                        eps=optim_cfg.epsilon)
         case "sgd":
-            return SGD(get_params(model, cfg.train.optim.weight_decay),
+            assert isinstance(optim_cfg, SGDConfig)
+            return SGD(get_params(model, optim_cfg.weight_decay),
                        lr=cfg.train.lr,
-                       momentum=cfg.train.optim.sgd.momentum)
-        case "adamw":
-            return AdamW(get_params(model, cfg.train.optim.weight_decay),
-                         lr=cfg.train.lr,
-                         betas=(cfg.train.optim.adam.beta1, cfg.train.optim.adam.beta2),
-                         eps=cfg.train.optim.adam.epsilon)
+                       momentum=optim_cfg.momentum)
         case _:
             raise ValueError(f"Unknown optimizer: {cfg.train.optim.name}")
 
-def get_lr_scheduler(cfg: "Config", optim: Optimizer, num_steps_per_epoch: int) -> LRScheduler:
+def get_lr_scheduler(cfg: Config, optim: Optimizer, num_steps_per_epoch: int) -> LRScheduler:
     match cfg.train.lr_scheduler.name.lower():
         case "cosine":
             warmup_lr_scheduler = torch.optim.lr_scheduler.LinearLR(

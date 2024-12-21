@@ -2,7 +2,7 @@
 #SBATCH -J ImageCls
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=V100:4
-#SBATCH -t 14:00:00
+#SBATCH -t 8:00:00
 #SBATCH --switches=1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out

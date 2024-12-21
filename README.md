@@ -74,10 +74,10 @@ data/Imagenet/
 The experiments are conducted on a data center using Slurm as the scheduler. To run the training with four A40 GPUs, 
 
 ```
-sbatch -A <PROJECT_ACCOUNT> script/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/resnet50.toml
+sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/resnet50.toml
 ```
 where `<PROJECT_ACCOUNT>` is the slurm project account.
 
-One can extract the command in [`script/train/4xA40.sh`](./script/train/4xA40.sh) to run seperately if the system is not based on slurm.
+One can extract the command in [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh) to run seperately if the system is not based on slurm.
 
 The evaulation on the validation set is done along with the training.
