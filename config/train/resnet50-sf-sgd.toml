@@ -17,7 +17,7 @@ val_crop_size = 224
 name = 'sgd-schedule-free'
 momentum = 0.9
 weight_decay = 0.00005
-r = 0.0
+r = 0.75
 
 [lr_scheduler]
 name = 'constant'

@@ -17,14 +17,6 @@ val_crop_size = 224
 name = 'adamw-schedule-free'
 weight_decay = 0.0
 
-[optim.adam]
-beta1 = 0.9
-beta2 = 0.999
-epsilon = 1e-8
-
-[optim.sgd]
-momentum = 0.9
-
 [lr_scheduler]
 name = 'constant'
 

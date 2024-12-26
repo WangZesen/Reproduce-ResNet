@@ -29,8 +29,9 @@ import time
 import wandb
 import torch
 import tomli_w
+from itertools import islice
 import pandas as pd
-from typing import Any
+from typing import Any, Tuple
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
@@ -65,11 +66,12 @@ def train_epoch(cfg: Config,
                 epoch: int,
                 step: int,
                 scaler: GradScaler,
-                profiler: Any):
+                profiler: Any) -> Tuple[float, int, float]:
     start_time = time.time()
     model.train()
     if is_schedule_free_optim(optimizer):
         optimizer.train() # type: ignore
+
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
     throughput_metric = SmoothedValue(cfg.train.log.log_freq)
     if rank == 0:
@@ -116,12 +118,20 @@ def train_epoch(cfg: Config,
 def valid(cfg: Config,
           model: Module,
           optimizer: Optimizer,
+          train_ds: DALIWrapper | Loader,
           valid_ds: DALIWrapper | Loader,
           criterion: Module,
-          epoch: int):
-    model.eval()
+          epoch: int) -> Tuple[float, float, float, int]:
+    
     if is_schedule_free_optim(optimizer):
+        model.train()
         optimizer.eval() # type: ignore
+        for images, _ in islice(train_ds, 100):
+            images = images.contiguous(memory_format=torch.channels_last)
+            with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+                model(images)
+
+    model.eval()
     total_loss = 0.
     total_acc1 = 0.
     total_acc5 = 0.
@@ -255,7 +265,7 @@ def main():
                                                                     scaler,
                                                                     profiler)
             total_train_time += epoch_train_time
-            val_loss, val_acc1, val_acc5, val_samples = valid(cfg, model, optimizer, valid_ds, criterion, epoch)
+            val_loss, val_acc1, val_acc5, val_samples = valid(cfg, model, optimizer, train_ds, valid_ds, criterion, epoch)
             stats = gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples)
             checkpoint_dir = ""
             if ((epoch + 1) % cfg.train.log.checkpoint_freq == 0) and (rank == 0):

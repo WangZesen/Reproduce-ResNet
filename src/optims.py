@@ -35,7 +35,7 @@ def get_optim(cfg: Config, model: nn.Module, num_steps_per_epoch: int) -> Optimi
                                    weight_decay=optim_cfg.weight_decay,
                                    warmup_steps=num_steps_per_epoch * optim_cfg.warmup_epochs,
                                    r=optim_cfg.r,
-                                   weight_lr_power=0.0)
+                                   weight_lr_power=2.0)
         case "adamw-schedule-free":
             assert isinstance(optim_cfg, AdamWScheduleFreeConfig)
             return AdamWScheduleFree(get_params(model, optim_cfg.weight_decay),
