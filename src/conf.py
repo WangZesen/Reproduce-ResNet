@@ -48,6 +48,7 @@ class SGDScheduleFreeConfig(BaseModel):
     weight_decay: float = Field(default=1e-4)
     momentum: float = Field(default=0.9)
     r: float = Field(default=0.0)
+    weight_lr_power: float = Field(default=2.0)
 
 class AdamWScheduleFreeConfig(BaseModel):
     name: Literal['adamw-schedule-free'] = 'adamw-schedule-free'
@@ -56,6 +57,8 @@ class AdamWScheduleFreeConfig(BaseModel):
     beta1: float = Field(default=0.9)
     beta2: float = Field(default=0.999)
     epsilon: float = Field(default=1e-8)
+    r: float = Field(default=0.0)
+    weight_lr_power: float = Field(default=2.0)
 
 ALL_OPTIMS = Union[AdamConfig, SGDConfig, SGDScheduleFreeConfig, AdamWScheduleFreeConfig]
 
