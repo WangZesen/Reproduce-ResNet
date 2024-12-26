@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer, Adam, SGD, AdamW
 from torch.optim.lr_scheduler import LRScheduler
-from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, CosineLRSchedulerConfig, ConstantLRSchedulerConfig
-from schedulefree import SGDScheduleFree
+from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, CosineLRSchedulerConfig, ConstantLRSchedulerConfig, AdamWScheduleFreeConfig
+from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeReference
 
 def get_params(model: nn.Module, weight_decay: float) -> list:
     bn_params = [v for n, v in model.named_parameters() if ('bn' in n) or ('bias' in n)]
@@ -33,7 +33,17 @@ def get_optim(cfg: Config, model: nn.Module, num_steps_per_epoch: int) -> Optimi
                                    lr=cfg.train.lr,
                                    momentum=optim_cfg.momentum,
                                    weight_decay=optim_cfg.weight_decay,
-                                   warmup_steps=num_steps_per_epoch * optim_cfg.warmup_epochs)
+                                   warmup_steps=num_steps_per_epoch * optim_cfg.warmup_epochs,
+                                   r=optim_cfg.r,
+                                   weight_lr_power=0.0)
+        case "adamw-schedule-free":
+            assert isinstance(optim_cfg, AdamWScheduleFreeConfig)
+            return AdamWScheduleFree(get_params(model, optim_cfg.weight_decay),
+                                     lr=cfg.train.lr,
+                                     betas=(optim_cfg.beta1,optim_cfg.beta2),
+                                     eps=optim_cfg.epsilon,
+                                     weight_decay=optim_cfg.weight_decay,
+                                     warmup_steps=num_steps_per_epoch * optim_cfg.warmup_epochs)
         case _:
             raise ValueError(f"Unknown optimizer: {cfg.train.optim.name}")
 

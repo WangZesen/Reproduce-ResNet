@@ -1,3 +1,9 @@
 data_dir = "./data/Imagenet"
 sharded_data_dir = "./data/Imagenet-sharded"
 num_classes = 1000
+ffcv_data_dir = "./data/ffcv"
+
+[ffcv_preprocess]
+max_resolution = 384
+compress_probability = 1.0
+jpeg_quality = 90

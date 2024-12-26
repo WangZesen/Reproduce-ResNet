@@ -41,21 +41,24 @@ from torch.profiler import schedule, profile, ProfilerActivity
 from src.conf import parse_config, Config
 from src.optims import get_optim, get_lr_scheduler
 from src.data.preload import preload_to_local
-from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper
+from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper, get_ffcv_train_loader, get_ffcv_valid_loader
+from ffcv.loader import Loader
 from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy
 from src.models import load_model
-from schedulefree import SGDScheduleFree, AdamWScheduleFree
+from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeReference
 
 '''
     Functions
 '''
 
 def is_schedule_free_optim(optim: Optimizer) -> bool:
-    return isinstance(optim, SGDScheduleFree) or isinstance(optim, AdamWScheduleFree)
+    return isinstance(optim, SGDScheduleFree) or \
+        isinstance(optim, AdamWScheduleFree) or \
+        isinstance(optim, SGDScheduleFreeReference)
 
 def train_epoch(cfg: Config,
                 model: Module,
-                train_ds: DALIWrapper,
+                train_ds: DALIWrapper | Loader,
                 criterion: Module,
                 optimizer: Optimizer,
                 lr_scheduler: LRScheduler,
@@ -93,7 +96,7 @@ def train_epoch(cfg: Config,
         # Update metrics
         _loss = loss.detach().item()
         loss_metric.update(_loss)
-        lr = optimizer.param_groups[0]['lr'] if optimizer is not None else model._optims[0].param_groups[0]['lr']
+        lr = optimizer.param_groups[0]['lr'] if not is_schedule_free_optim(optimizer) else optimizer.param_groups[0]['scheduled_lr']
         step += 1
 
         if rank == 0:
@@ -113,7 +116,7 @@ def train_epoch(cfg: Config,
 def valid(cfg: Config,
           model: Module,
           optimizer: Optimizer,
-          valid_ds: DALIWrapper,
+          valid_ds: DALIWrapper | Loader,
           criterion: Module,
           epoch: int):
     model.eval()
@@ -154,6 +157,7 @@ def main():
     assert torch.cuda.is_available(), 'CUDA is not available'
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
     torch.manual_seed(cfg.train.reproduce.seed)
     torch.cuda.manual_seed(cfg.train.reproduce.seed)
 
@@ -162,11 +166,17 @@ def main():
     '''
         Load data
     '''
-    if cfg.train.preprocess.preload_local:
-        preload_to_local(cfg)
+    if cfg.train.dataloader == 'dali':
+        if cfg.train.preprocess.preload_local:
+            preload_to_local(cfg)
 
-    train_ds, num_batches = get_dali_train_loader(cfg)
-    valid_ds = get_dali_valid_loader(cfg)
+        train_ds, num_batches = get_dali_train_loader(cfg)
+        valid_ds = get_dali_valid_loader(cfg)
+    else:
+        train_ds, _ = get_ffcv_train_loader(cfg)
+        valid_ds = get_ffcv_valid_loader(cfg)
+        num_batches = len(train_ds)
+    logger.info(f'Number of training batches per epoch: {num_batches}')
 
     '''
         Initialize the model, optimizer, and learning rate scheduler.

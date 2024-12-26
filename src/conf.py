@@ -6,9 +6,21 @@ from pydantic import BaseModel, Field, computed_field, ConfigDict
 
 PROJECT_DIR: Final[str] = os.path.relpath(os.path.join(os.path.dirname(__file__), '..'), '.')
 
+class FFCVPreprocessConfig(BaseModel):
+    max_resolution: int = Field(default=384)
+    compress_probability: float = Field(default=1.0)
+    jpeg_quality: int = Field(default=90)
+    
+    @computed_field
+    @property
+    def tag(self) -> str:
+        return f'ffcv_{self.max_resolution}_{self.compress_probability:.3f}_{self.jpeg_quality}'
+
 class Data(BaseModel):
     data_dir: str = Field(default='./data/Imagenet')
     sharded_data_dir: str = Field(default='./data/Imagenet-sharded')
+    ffcv_data_dir: str = Field(default='./data/FFCV')
+    ffcv_preprocess: FFCVPreprocessConfig = Field(default_factory=FFCVPreprocessConfig)
     num_classes: int = Field(default=1000)
 
 class Preprocess(BaseModel):
@@ -35,8 +47,17 @@ class SGDScheduleFreeConfig(BaseModel):
     warmup_epochs: int = Field(default=5)
     weight_decay: float = Field(default=1e-4)
     momentum: float = Field(default=0.9)
+    r: float = Field(default=0.0)
 
-ALL_OPTIMS = Union[AdamConfig, SGDConfig, SGDScheduleFreeConfig]
+class AdamWScheduleFreeConfig(BaseModel):
+    name: Literal['adamw-schedule-free'] = 'adamw-schedule-free'
+    warmup_epochs: int = Field(default=5)
+    weight_decay: float = Field(default=1e-1)
+    beta1: float = Field(default=0.9)
+    beta2: float = Field(default=0.999)
+    epsilon: float = Field(default=1e-8)
+
+ALL_OPTIMS = Union[AdamConfig, SGDConfig, SGDScheduleFreeConfig, AdamWScheduleFreeConfig]
 
 class CosineLRSchedulerConfig(BaseModel):
     name: Literal['cosine'] = Field(default='cosine')
@@ -110,6 +131,9 @@ class Train(BaseModel):
     reproduce: Reproduce = Field(default_factory=Reproduce)
     log: Log = Field(default_factory=Log)
     network: Network = Field(default_factory=Network)
+    ffcv_in_memory: bool = Field(default=True)
+    num_data_workers: int = Field(default=12)
+    dataloader: Literal['dali', 'ffcv'] = Field(default='ffcv')
 
     @computed_field(repr=False)
     @property

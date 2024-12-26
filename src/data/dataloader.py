@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 import torch.distributed as dist
 from nvidia.dali.pipeline import Pipeline
@@ -11,6 +12,19 @@ from nvidia.dali.ops import RandomResizedCrop, CropMirrorNormalize, Resize
 from nvidia.dali.ops.random import CoinFlip
 from src.conf import Config
 
+from ffcv.pipeline.operation import Operation
+from ffcv.loader import Loader, OrderOption
+from ffcv.transforms import ToTensor, ToDevice, Squeeze, NormalizeImage, \
+    RandomHorizontalFlip, ToTorchImage
+from ffcv.fields.rgb_image import CenterCropRGBImageDecoder, \
+    RandomResizedCropRGBImageDecoder, ResizedCropRGBImageDecoder
+from ffcv.fields.basics import IntDecoder
+
+from typing import List, Tuple
+
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) * 255
+IMAGENET_STD = np.array([0.229, 0.224, 0.225]) * 255
+DEFAULT_CROP_RATIO = 224/256
 
 class DaliImageNetTrainPipeline(Pipeline):
     def __init__(self,
@@ -194,3 +208,77 @@ def get_dali_valid_loader(cfg: Config):
     )
     return DALIWrapper(valid_loader)
 
+
+def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecoder]:
+    ffcv_train_data_dir = os.path.join(cfg.data.ffcv_data_dir, cfg.data.ffcv_preprocess.tag + "_train.ffcv")
+    device = torch.device("cuda")
+    data_type = np.float16 if cfg.train.use_amp else np.float32
+
+    decoder = RandomResizedCropRGBImageDecoder((cfg.train.preprocess.train_crop_size, cfg.train.preprocess.train_crop_size))
+    image_pipeline: List[Operation] = [
+        decoder,
+        RandomHorizontalFlip(),
+        ToTensor(),
+        ToDevice(device, non_blocking=True),
+        ToTorchImage(),
+        NormalizeImage(IMAGENET_MEAN, IMAGENET_STD, data_type) # type: ignore
+    ]
+
+    label_pipeline: List[Operation] = [
+        IntDecoder(),
+        ToTensor(),
+        Squeeze(),
+        ToDevice(device, non_blocking=True)
+    ]
+
+    order = OrderOption.RANDOM
+
+    loader = Loader(ffcv_train_data_dir,
+                    batch_size=cfg.train.batch_size_per_local_batch,
+                    num_workers=cfg.train.num_data_workers,
+                    order=order,
+                    os_cache=cfg.train.ffcv_in_memory,
+                    drop_last=True,
+                    pipelines={
+                        "image": image_pipeline,
+                        "label": label_pipeline
+                    },
+                    distributed=True,
+                    seed=cfg.train.reproduce.seed)
+    
+    return loader, decoder
+
+
+def get_ffcv_valid_loader(cfg: Config) -> Loader:
+    ffcv_valid_data_dir = os.path.join(cfg.data.ffcv_data_dir, cfg.data.ffcv_preprocess.tag + "_val.ffcv")
+    device = torch.device("cuda")
+    data_type = np.float16 if cfg.train.use_amp else np.float32
+
+    decoder = CenterCropRGBImageDecoder((cfg.train.preprocess.val_crop_size, cfg.train.preprocess.val_crop_size),
+                                        ratio=DEFAULT_CROP_RATIO)
+    image_pipeline: List[Operation] = [
+        decoder,
+        ToTensor(),
+        ToDevice(device, non_blocking=True),
+        ToTorchImage(),
+        NormalizeImage(IMAGENET_MEAN, IMAGENET_STD, data_type) # type: ignore
+    ]
+
+    label_pipeline = [
+        IntDecoder(),
+        ToTensor(),
+        Squeeze(),
+        ToDevice(device, non_blocking=True)
+    ]
+
+    loader = Loader(ffcv_valid_data_dir,
+                    batch_size=cfg.train.batch_size_per_local_batch,
+                    num_workers=cfg.train.num_data_workers,
+                    order=OrderOption.SEQUENTIAL,
+                    drop_last=False,
+                    pipelines={
+                        "image": image_pipeline,
+                        "label": label_pipeline
+                    },
+                    distributed=True)
+    return loader
