@@ -27,7 +27,7 @@ def read_train_log(exp_dir: str) -> Tuple[pd.DataFrame, float, float, float]:
         matches = re.findall('world_size = .*\n', dumped_train_cfg)
         num_workers = int(matches[0].split(' ')[2])
     train_cfg = TrainConfig(**_load_toml(os.path.join(exp_dir, 'train_cfg.dump.toml')))
-    label = f'{train_cfg.arch} - {num_workers} workers{" - amp" if train_cfg.use_amp else ""}'
+    label = f'{train_cfg.optim.name} - {num_workers} workers'
     test_log['label'] = label
     return test_log, test_log['val_acc1'].to_list()[-1], test_log['val_acc5'].to_list()[-1], test_log['time'].to_list()[-1]
 
@@ -41,7 +41,6 @@ def plot(logs: pd.DataFrame, x: str, y: str, img_dir: str, xscale: str='linear',
     plt.xlim(left=0)
     plt.tight_layout()
     plt.savefig(img_dir, dpi=300, bbox_inches='tight')
-
 
 
 def main():
