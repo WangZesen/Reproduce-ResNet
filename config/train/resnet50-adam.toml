@@ -5,6 +5,8 @@ label_smoothing = 0.1
 checkpoint_dir = ""
 arch = "resnet50"
 use_amp = true
+dataloader = "ffcv"
+ffcv_in_memory = true
 
 [preprocess]
 preload_local = true
@@ -29,7 +31,6 @@ warmup_decay = 0.01
 seed = 810975
 
 [log]
-log_dir = './log'
 log_freq = 100
 wandb_on = true
 wandb_project = "reproduce_resnet"

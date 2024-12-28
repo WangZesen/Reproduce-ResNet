@@ -28,10 +28,11 @@ logger.add(sys.stdout)
 import time
 import wandb
 import torch
+import random
 import tomli_w
 from itertools import islice
 import pandas as pd
-from typing import Any, Tuple
+from typing import Any, Tuple, Final
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
@@ -44,7 +45,7 @@ from src.optims import get_optim, get_lr_scheduler
 from src.data.preload import preload_to_local
 from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper, get_ffcv_train_loader, get_ffcv_valid_loader
 from ffcv.loader import Loader
-from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy
+from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
 from src.models import load_model
 from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeReference
 
@@ -78,7 +79,6 @@ def train_epoch(cfg: Config,
         logger.info(f'[Train Epoch {epoch+1}]')
 
     for images, labels in train_ds:
-        images = images.contiguous(memory_format=torch.channels_last)
         iter_start_time = time.time()
         # Forward pass
         optimizer.zero_grad()
@@ -113,23 +113,28 @@ def train_epoch(cfg: Config,
         del images, labels, pred, loss
     return loss_metric.global_avg, step, time.time() - start_time
 
+def collect_bn_stats(cfg: Config, model: Module, stats_ds: DALIWrapper | Loader) -> None:
+    model.train()
+    cnt = 0
+    for images, _ in stats_ds:
+        if cnt < cfg.train.num_samples_for_stats:
+            with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+                with torch.no_grad():
+                    model(images)
+            cnt += images.size(0) * cfg.train.network.world_size
 
 @torch.no_grad()
 def valid(cfg: Config,
           model: Module,
           optimizer: Optimizer,
-          train_ds: DALIWrapper | Loader,
+          stats_ds: DALIWrapper | Loader,
           valid_ds: DALIWrapper | Loader,
           criterion: Module,
           epoch: int) -> Tuple[float, float, float, int]:
-    
     if is_schedule_free_optim(optimizer):
-        model.train()
         optimizer.eval() # type: ignore
-        for images, _ in islice(train_ds, 100):
-            images = images.contiguous(memory_format=torch.channels_last)
-            with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
-                model(images)
+        collect_bn_stats(cfg, model, stats_ds)
+        sync_model_buffers(model)
 
     model.eval()
     total_loss = 0.
@@ -141,7 +146,6 @@ def valid(cfg: Config,
         logger.info(f'[Validate Epoch {epoch+1}]')
 
     for images, labels in valid_ds:
-        images = images.contiguous(memory_format=torch.channels_last)
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
             logit = model(images)
             loss = criterion(logit, labels.view(-1))
@@ -170,6 +174,7 @@ def main():
     torch.backends.cudnn.benchmark = True
     torch.manual_seed(cfg.train.reproduce.seed)
     torch.cuda.manual_seed(cfg.train.reproduce.seed)
+    random.seed(cfg.train.reproduce.seed)
 
     initialize_dist()
 
@@ -179,7 +184,6 @@ def main():
     if cfg.train.dataloader == 'dali':
         if cfg.train.preprocess.preload_local:
             preload_to_local(cfg)
-
         train_ds, num_batches = get_dali_train_loader(cfg)
         valid_ds = get_dali_valid_loader(cfg)
     else:
@@ -265,7 +269,13 @@ def main():
                                                                     scaler,
                                                                     profiler)
             total_train_time += epoch_train_time
-            val_loss, val_acc1, val_acc5, val_samples = valid(cfg, model, optimizer, train_ds, valid_ds, criterion, epoch)
+            val_loss, val_acc1, val_acc5, val_samples = valid(cfg,
+                                                              model,
+                                                              optimizer,
+                                                              train_ds,
+                                                              valid_ds,
+                                                              criterion,
+                                                              epoch)
             stats = gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples)
             checkpoint_dir = ""
             if ((epoch + 1) % cfg.train.log.checkpoint_freq == 0) and (rank == 0):

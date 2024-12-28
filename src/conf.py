@@ -137,6 +137,7 @@ class Train(BaseModel):
     ffcv_in_memory: bool = Field(default=True)
     num_data_workers: int = Field(default=12)
     dataloader: Literal['dali', 'ffcv'] = Field(default='ffcv')
+    num_samples_for_stats: int = Field(default=102400)
 
     @computed_field(repr=False)
     @property

@@ -87,3 +87,12 @@ def gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples) -> 
         log[2] /= log[4]
         log[3] /= log[4]
     return log
+
+
+def sync_model_buffers(model: torch.nn.Module):
+    if dist.is_available() and dist.is_initialized():
+        for buffer in model.buffers():
+            if buffer.dtype in [torch.float32, torch.float64]:
+                dist.all_reduce(buffer, op=dist.ReduceOp.AVG)
+            else:
+                dist.broadcast(buffer, 0)
