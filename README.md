@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This repo is an unofficial reproduction of training ResNet-50 on ImageNet which is one of the most classic machine learning workloads based on PyTorch 2.3.0 (latest stable version by the time of setting up this repo). The repo provides a simple and efficient implement, which could be used as the baseline for future adaptation.
+This repo is an unofficial reproduction of training ResNet-50 on ImageNet which is one of the most classic machine learning workloads based on PyTorch 2.3.0 (latest stable version by the time of setting up this repo). The repo provides a simple and efficient implement, which could be easiliy adapted for other optimization purpose.
 
 ## Results
 
@@ -27,23 +27,34 @@ The table below reports the total number of iterations, the accuracies evaluated
 
 ## Reproduce Experiments
 
+> [!NOTE]
+> The instruction is for Linux systems with SLURM as workload manager. It may be subject to change for other platforms.
+
 ### Python Environment
 
-```
+Create a virtual environment using Conda. Activate the environment and install the dependencies by
+
+```bash
+# install latest version of pytorch: see https://pytorch.org/get-started/locally/ for other platforms
 pip install torch torchvision torchaudio
 # install dali with cuda-11.0 as it comes with cuda dependencies
 pip install --extra-index-url https://pypi.nvidia.com --upgrade nvidia-dali-cuda110
+# install ffcv
+conda install cupy pkg-config libjpeg-turbo opencv numba -c conda-forge -c pytorch
+# install other dependencies
 pip install wandb seaborn loguru scipy tqdm tomli-w pydantic
 ```
 
-One has to login to wandb for uploading the metrics before runing the experiments.
+One has to login to wandb for uploading the metrics before runing the experiments (wandb logging is on by default).
 ```
 wandb login
 ```
 
 ### Prepare Data
 
-Since it needs to sign an agreement for downloading the dataset, only an instruction is provided here.
+#### Download ImageNet (ILSVRC 2012)
+
+Since it needs to sign an agreement for downloading the dataset, no direct download link to the processed dataset can be provided here.
 
 Download the ImageNet (ILSVRC 2012) dataset from [here](https://www.image-net.org/).
 
@@ -69,15 +80,46 @@ data/Imagenet/
 │   ├── ...
 ```
 
+#### ffcv Dataloader (Recommend)
+
+Use ffcv dataloader to load the whole dataset into the memory to avoid disk IO bottleneck. It's recommended to use ffcv if there is >=64GB memory per GPU.
+
+Create folder for processed dataset
+```bash
+mkdir ./data/ffcv/
+```
+
+Transform the dataset into bento format by
+```bash
+python -m src.ffcv_writer --data-cfg config/data/imagenet.toml
+```
+
+It will generate the processed datasets for training and validation under `./data/ffcv`. The total size is around 66.9GB. The preprocess configurations are 1. `500` pixel as max resolution, 2. `90` as JPG quality, and 3. all images are compressed as JPG. Please see [ffcv documentation](https://docs.ffcv.io/benchmarks.html#dataset-sizes) for details.
+
+#### DALI Dataloader
+
+No further processes need to be done for DALI dataloader.
+
 ### Train
 
 The experiments are conducted on a data center using Slurm as the scheduler. To run the training with four A40 GPUs, 
 
 ```
-sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/resnet50.toml
+sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/resnet50-adam.toml
 ```
 where `<PROJECT_ACCOUNT>` is the slurm project account.
 
 One can extract the command in [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh) to run seperately if the system is not based on slurm.
 
 The evaulation on the validation set is done along with the training.
+
+#### Configuration files
+
+- `config/data/imagenet.toml`: data configuration
+- `config/data/resnet-adam.toml`: train ResNet-50 with Adam optimizer
+- `config/data/resnet-sf-sgd.toml`: train ResNet-50 with schedule-free SGD optimizer [1]
+
+
+## Reference
+
+[1] Schedule-free optimizer: https://github.com/facebookresearch/schedule_free
