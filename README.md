@@ -20,9 +20,10 @@ For the experiment, the model is trained by four A40 GPUs. The reproduced result
 
 The table below reports the total number of iterations, the accuracies evaluated by the trained model at the last iteration, and the total training time.
 
-|  Epoch  | Steps |        AMP         |   Top-1 Acc.    | Top-5 Acc. | Training Time (hours) |
+|  Epoch  | Steps |        Optimizer         |   Top-1 Acc.    | Top-5 Acc. | Training Time (hours) |
 |:------:|:---:|:------------------:|:----:|:---------------:|:---------------------:|
-| 90 | 112590 | :white_check_mark: | 76.0720 ± 0.2187 |    92.9067 ± 0.1742    | 7.4770 ± 0.0174 |
+| 90 | 112590 | Adam | 76.0133 ± 0.1125 |    92.9093 ± 0.0571    | 5.2771 ± 0.0026 |
+| 90 | 112590 | Schedule-free SGD | 76.7047 ± 0.0500 |    93.2113 ± 0.0698    | 5.1703 ± 0.0058 |
 
 
 ## Reproduce Experiments
