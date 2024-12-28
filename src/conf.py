@@ -83,13 +83,13 @@ class Log(BaseModel):
 
     @computed_field
     @property
-    def slurm_id(self) -> str:
-        return os.environ.get('SLURM_JOB_ID', '0')
+    def job_id(self) -> str:
+        return os.environ.get('SLURM_JOB_ID', '0') if 'SLURM_JOB_ID' in os.environ else os.environ.get('JOB_ID', '0')
 
     @computed_field
     @property
     def log_dir(self) -> str:
-        return os.path.join(PROJECT_DIR, 'log', self.slurm_id)
+        return os.path.join(PROJECT_DIR, 'log', self.job_id)
 
 
 class Network(BaseModel):
