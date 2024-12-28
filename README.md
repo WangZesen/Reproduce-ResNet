@@ -42,6 +42,9 @@ pip install torch torchvision torchaudio
 pip install --extra-index-url https://pypi.nvidia.com --upgrade nvidia-dali-cuda110
 # install ffcv
 conda install cupy pkg-config libjpeg-turbo opencv numba -c conda-forge -c pytorch
+pip install ffcv
+# install schedule-free optimizer
+pip install schedulefree
 # install other dependencies
 pip install wandb seaborn loguru scipy tqdm tomli-w pydantic
 ```
