@@ -115,11 +115,12 @@ The evaulation on the validation set is done along with the training.
 
 #### Configuration files
 
-- `config/data/imagenet.toml`: data configuration
-- `config/data/resnet-adam.toml`: train ResNet-50 with Adam optimizer
-- `config/data/resnet-sf-sgd.toml`: train ResNet-50 with schedule-free SGD optimizer [1]
+- [`config/data/imagenet.toml`](./config/data/imagenet.toml): data configuration
+- [`config/train/resnet-adam.toml`](./config/train/resnet50-adam.toml): training configuration for ResNet-50 with Adam optimizer
+- [`config/train/resnet-sf-sgd.toml`](./config/train/resnet50-sf-sgd.toml): training configuration for ResNet-50 with schedule-free SGD optimizer [1]
 
+See [`src/conf.py`](./src/conf.py) for detailed structure of the configuration files.
 
 ## Reference
 
-[1] Schedule-free optimizer: https://github.com/facebookresearch/schedule_free
+[1] Defazio, Aaron, et al. "The road less scheduled." arXiv preprint arXiv:2405.15682 (2024). [Repo Link](https://github.com/facebookresearch/schedule_free).
