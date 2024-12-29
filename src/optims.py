@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer, Adam, SGD, AdamW
 from torch.optim.lr_scheduler import LRScheduler
-from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, CosineLRSchedulerConfig, ConstantLRSchedulerConfig, AdamWScheduleFreeConfig
+from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, CosineLRSchedulerConfig, AdamWScheduleFreeConfig
 from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeReference
 
 def get_params(model: nn.Module, weight_decay: float) -> list:

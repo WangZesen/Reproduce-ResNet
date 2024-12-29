@@ -3,15 +3,18 @@ import subprocess
 import time
 import torch.distributed as dist
 from loguru import logger
-from src.conf import Config
+from src.conf import Config, DaliConfig
 
 def preload_to_local(cfg: 'Config'):
+    dataloader_cfg = cfg.data.dataloader
+    assert isinstance(dataloader_cfg, DaliConfig)
+
     rank = int(os.environ.get('RANK', 0))
     local_rank = int(os.environ.get('LOCAL_RANK', 0))
     local_world_size = int(os.environ.get('LOCAL_WORLD_SIZE', 1))
     world_size = int(os.environ.get('WORLD_SIZE', 1))
     tmp_dir = os.environ['TMPDIR']
-    num_shards = int(subprocess.check_output(f'ls {cfg.data.sharded_data_dir} | grep zip | wc -l', shell=True).decode().strip())
+    num_shards = int(subprocess.check_output(f'ls {dataloader_cfg.sharded_data_dir} | grep zip | wc -l', shell=True).decode().strip())
 
     if os.path.exists(os.path.join(tmp_dir, "train")):
         logger.debug(f'[rank {rank}] Preload Complete "data_dir" is changed to: {tmp_dir}')
@@ -19,9 +22,7 @@ def preload_to_local(cfg: 'Config'):
         return
     
     tmp_dir_capacity = int(subprocess.check_output(f"df {tmp_dir} | tail -n 1 | awk '{{print $4}}'", shell=True).decode().strip())
-    tmp_dir_capacity_gb = tmp_dir_capacity
-
-    shard_sizes = subprocess.check_output(f"du -s {cfg.data.sharded_data_dir}/*.zip | awk '{{print $1}}'", shell=True).decode().strip().split('\n')
+    shard_sizes = subprocess.check_output(f"du -s {dataloader_cfg.sharded_data_dir}/*.zip | awk '{{print $1}}'", shell=True).decode().strip().split('\n')
     max_shard_size = max([int(size) for size in shard_sizes])
     
     shards_left = num_shards
@@ -34,7 +35,7 @@ def preload_to_local(cfg: 'Config'):
                 shard_index = num_shards - shards_left + i
                 logger.debug(f'[rank {rank}] Preload shard {shard_index} to local storage')
                 start_time = time.time()
-                subprocess.check_call(f'cp {cfg.data.sharded_data_dir}/shard{shard_index}.zip {tmp_dir}', shell=True)
+                subprocess.check_call(f'cp {dataloader_cfg.sharded_data_dir}/shard{shard_index}.zip {tmp_dir}', shell=True)
                 logger.debug(f'[rank {rank}] Preload done. Elapsed time: {time.time() - start_time:.2f} s')
                 logger.debug(f'[rank {rank}] Unzip shard {shard_index}')
                 start_time = time.time()

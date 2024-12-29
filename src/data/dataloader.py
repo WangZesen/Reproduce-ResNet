@@ -10,7 +10,7 @@ from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 from nvidia.dali.ops import RandomResizedCrop, CropMirrorNormalize, Resize
 from nvidia.dali.ops.random import CoinFlip
-from src.conf import Config
+from src.conf import Config, FFCVConfig, DaliConfig
 
 from ffcv.pipeline.operation import Operation
 from ffcv.loader import Loader, OrderOption
@@ -33,7 +33,8 @@ class DaliImageNetTrainPipeline(Pipeline):
                  interpolation: str,
                  crop: int,
                  seed: int,
-                 dont_use_mmap: bool):
+                 dont_use_mmap: bool,
+                 num_workers: int):
         super().__init__(batch_size,
                          num_threads=4,
                          device_id=0,
@@ -104,8 +105,9 @@ class DaliImageNetValPipeline(Pipeline):
                  interpolation: str,
                  resize: int,
                  crop: int,
-                 dont_use_mmap: bool):
-        super().__init__(batch_size, num_threads=2, device_id=0)
+                 dont_use_mmap: bool,
+                 num_workers: int):
+        super().__init__(batch_size, num_threads=num_workers, device_id=0)
         interpolation_type = {
             "bicubic": types.DALIInterpType.INTERP_CUBIC,
             "bilinear": types.DALIInterpType.INTERP_LINEAR,
@@ -173,6 +175,7 @@ class DALIWrapper(object):
 
 
 def get_dali_train_loader(cfg: Config):
+    assert isinstance(cfg.data.dataloader, DaliConfig)
     train_data_dir = os.path.join(cfg.data.data_dir, "train")
     pipe = DaliImageNetTrainPipeline(
         batch_size=cfg.train.batch_size_per_local_batch,
@@ -180,7 +183,8 @@ def get_dali_train_loader(cfg: Config):
         interpolation=cfg.train.preprocess.interpolation,
         crop=cfg.train.preprocess.train_crop_size,
         seed=cfg.train.reproduce.seed,
-        dont_use_mmap=not cfg.train.preprocess.preload_local
+        dont_use_mmap=not cfg.train.preprocess.preload_local,
+        num_workers=cfg.data.dataloader.num_data_workers
     )
     pipe.build()
     train_loader = DALIClassificationIterator(
@@ -191,6 +195,7 @@ def get_dali_train_loader(cfg: Config):
 
 
 def get_dali_valid_loader(cfg: Config):
+    assert isinstance(cfg.data.dataloader, DaliConfig)
     train_data_dir = os.path.join(cfg.data.data_dir, "val")
     pipe = DaliImageNetValPipeline(
         batch_size=cfg.train.batch_size_per_local_batch,
@@ -198,7 +203,8 @@ def get_dali_valid_loader(cfg: Config):
         interpolation=cfg.train.preprocess.interpolation,
         resize=cfg.train.preprocess.val_image_size,
         crop=cfg.train.preprocess.val_crop_size,
-        dont_use_mmap=not cfg.train.preprocess.preload_local
+        dont_use_mmap=not cfg.train.preprocess.preload_local,
+        num_workers=cfg.data.dataloader.num_data_workers
     )
     pipe.build()
     valid_loader = DALIClassificationIterator(
@@ -210,7 +216,9 @@ def get_dali_valid_loader(cfg: Config):
 
 
 def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecoder]:
-    ffcv_train_data_dir = os.path.join(cfg.data.ffcv_data_dir, cfg.data.ffcv_preprocess.tag + "_train.ffcv")
+    dataloader_cfg = cfg.data.dataloader
+    assert isinstance(dataloader_cfg, FFCVConfig)
+    ffcv_train_data_dir = dataloader_cfg.train_data_dir
     device = torch.device("cuda")
     data_type = np.float16 if cfg.train.use_amp else np.float32
 
@@ -235,9 +243,9 @@ def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecod
 
     loader = Loader(ffcv_train_data_dir,
                     batch_size=cfg.train.batch_size_per_local_batch,
-                    num_workers=cfg.train.num_data_workers,
+                    num_workers=dataloader_cfg.num_data_workers,
                     order=order,
-                    os_cache=cfg.train.ffcv_in_memory,
+                    os_cache=dataloader_cfg.in_memory,
                     drop_last=True,
                     pipelines={
                         "image": image_pipeline,
@@ -250,7 +258,9 @@ def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecod
 
 
 def get_ffcv_valid_loader(cfg: Config) -> Loader:
-    ffcv_valid_data_dir = os.path.join(cfg.data.ffcv_data_dir, cfg.data.ffcv_preprocess.tag + "_val.ffcv")
+    dataloader_cfg = cfg.data.dataloader
+    assert isinstance(dataloader_cfg, FFCVConfig)
+    ffcv_valid_data_dir = dataloader_cfg.val_data_dir
     device = torch.device("cuda")
     data_type = np.float16 if cfg.train.use_amp else np.float32
 
@@ -273,7 +283,7 @@ def get_ffcv_valid_loader(cfg: Config) -> Loader:
 
     loader = Loader(ffcv_valid_data_dir,
                     batch_size=cfg.train.batch_size_per_local_batch,
-                    num_workers=cfg.train.num_data_workers,
+                    num_workers=dataloader_cfg.num_data_workers,
                     order=OrderOption.SEQUENTIAL,
                     drop_last=False,
                     pipelines={

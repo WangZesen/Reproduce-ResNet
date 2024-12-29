@@ -32,7 +32,7 @@ import random
 import tomli_w
 from itertools import islice
 import pandas as pd
-from typing import Any, Tuple, Final
+from typing import Any, Tuple, Final, cast
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
@@ -40,7 +40,7 @@ from torch import GradScaler
 from torch.optim.lr_scheduler import LRScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.profiler import schedule, profile, ProfilerActivity
-from src.conf import parse_config, Config
+from src.conf import parse_config, Config, SCHEDULEFREE_OPTIMS
 from src.optims import get_optim, get_lr_scheduler
 from src.data.preload import preload_to_local
 from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper, get_ffcv_train_loader, get_ffcv_valid_loader
@@ -53,10 +53,8 @@ from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeRefe
     Functions
 '''
 
-def is_schedule_free_optim(optim: Optimizer) -> bool:
-    return isinstance(optim, SGDScheduleFree) or \
-        isinstance(optim, AdamWScheduleFree) or \
-        isinstance(optim, SGDScheduleFreeReference)
+def is_schedule_free_optim(cfg: Config) -> bool:
+    return any(isinstance(cfg.train.optim, opt) for opt in SCHEDULEFREE_OPTIMS)
 
 def train_epoch(cfg: Config,
                 model: Module,
@@ -70,7 +68,7 @@ def train_epoch(cfg: Config,
                 profiler: Any) -> Tuple[float, int, float]:
     start_time = time.time()
     model.train()
-    if is_schedule_free_optim(optimizer):
+    if is_schedule_free_optim(cfg):
         optimizer.train() # type: ignore
 
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
@@ -98,7 +96,7 @@ def train_epoch(cfg: Config,
         # Update metrics
         _loss = loss.detach().item()
         loss_metric.update(_loss)
-        lr = optimizer.param_groups[0]['lr'] if not is_schedule_free_optim(optimizer) else optimizer.param_groups[0]['scheduled_lr']
+        lr = optimizer.param_groups[0]['lr'] if not is_schedule_free_optim(cfg) else optimizer.param_groups[0]['scheduled_lr']
         step += 1
 
         if rank == 0:
@@ -116,8 +114,11 @@ def train_epoch(cfg: Config,
 def collect_bn_stats(cfg: Config, model: Module, stats_ds: DALIWrapper | Loader) -> None:
     model.train()
     cnt = 0
+    optim_cfg = cfg.train.optim
+    assert any(isinstance(optim_cfg, opt) for opt in SCHEDULEFREE_OPTIMS)
+
     for images, _ in stats_ds:
-        if cnt < cfg.train.num_samples_for_stats:
+        if cnt < optim_cfg.num_samples_for_stats: # type: ignore
             with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
                 with torch.no_grad():
                     model(images)
@@ -131,7 +132,7 @@ def valid(cfg: Config,
           valid_ds: DALIWrapper | Loader,
           criterion: Module,
           epoch: int) -> Tuple[float, float, float, int]:
-    if is_schedule_free_optim(optimizer):
+    if is_schedule_free_optim(cfg):
         optimizer.eval() # type: ignore
         collect_bn_stats(cfg, model, stats_ds)
         sync_model_buffers(model)
@@ -181,7 +182,7 @@ def main():
     '''
         Load data
     '''
-    if cfg.train.dataloader == 'dali':
+    if cfg.data.dataloader.name == 'dali':
         if cfg.train.preprocess.preload_local:
             preload_to_local(cfg)
         train_ds, num_batches = get_dali_train_loader(cfg)

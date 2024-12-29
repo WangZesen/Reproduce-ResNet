@@ -39,4 +39,4 @@ log_dir = './log'
 log_freq = 100
 wandb_on = true
 wandb_project = "reproduce-ImageCls"
-ckpt_freq = 45
+checkpoint_freq = 45
