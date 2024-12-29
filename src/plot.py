@@ -26,7 +26,7 @@ def read_train_log(exp_dir: str) -> Tuple[pd.DataFrame, float, float, float]:
         dumped_train_cfg = f.read()
         matches = re.findall('world_size = .*\n', dumped_train_cfg)
         num_workers = int(matches[0].split(' ')[2])
-    train_cfg = TrainConfig(**_load_toml(os.path.join(exp_dir, 'train_cfg.dump.toml')))
+    train_cfg = TrainConfig.model_validate(_load_toml(os.path.join(exp_dir, 'train_cfg.toml')))
     label = f'{train_cfg.optim.name} - {num_workers} workers'
     test_log['label'] = label
     return test_log, test_log['val_acc1'].to_list()[-1], test_log['val_acc5'].to_list()[-1], test_log['time'].to_list()[-1]
