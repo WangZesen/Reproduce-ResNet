@@ -57,7 +57,7 @@ def is_schedule_free_optim(cfg: Config) -> bool:
     return any(isinstance(cfg.train.optim, opt) for opt in SCHEDULEFREE_OPTIMS)
 
 def train_epoch(cfg: Config,
-                model: Module,
+                model: Any,
                 train_ds: DALIWrapper | Loader,
                 criterion: Module,
                 optimizer: Optimizer,
@@ -111,7 +111,7 @@ def train_epoch(cfg: Config,
         del images, labels, pred, loss
     return loss_metric.global_avg, step, time.time() - start_time
 
-def collect_bn_stats(cfg: Config, model: Module, stats_ds: DALIWrapper | Loader) -> None:
+def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) -> None:
     model.train()
     cnt = 0
     optim_cfg = cfg.train.optim
@@ -126,7 +126,7 @@ def collect_bn_stats(cfg: Config, model: Module, stats_ds: DALIWrapper | Loader)
 
 @torch.no_grad()
 def valid(cfg: Config,
-          model: Module,
+          model: Any,
           optimizer: Optimizer,
           stats_ds: DALIWrapper | Loader,
           valid_ds: DALIWrapper | Loader,
@@ -211,6 +211,8 @@ def main():
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     scaler = torch.GradScaler(device='cuda', enabled=cfg.train.use_amp)
 
+    compiled_model = torch.compile(model)
+
     if rank == 0:
         logger.info(cfg)
         if cfg.train.log.wandb_on:
@@ -260,7 +262,7 @@ def main():
     ) as profiler:
         for epoch in range(start_epoch, cfg.train.max_epochs):
             train_loss, global_step, epoch_train_time = train_epoch(cfg,
-                                                                    model,
+                                                                    compiled_model,
                                                                     train_ds,
                                                                     criterion,
                                                                     optimizer,
@@ -271,7 +273,7 @@ def main():
                                                                     profiler)
             total_train_time += epoch_train_time
             val_loss, val_acc1, val_acc5, val_samples = valid(cfg,
-                                                              model,
+                                                              compiled_model,
                                                               optimizer,
                                                               train_ds,
                                                               valid_ds,
