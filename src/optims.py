@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 from torch.optim import Optimizer, Adam, SGD
 from torch.optim.lr_scheduler import LRScheduler
-from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, CosineLRSchedulerConfig, AdamWScheduleFreeConfig
+from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, \
+    CosineLRSchedulerConfig, AdamWScheduleFreeConfig, SGDSAMConfig
 from schedulefree import SGDScheduleFree, AdamWScheduleFree
+from src.custom_optims.sam import SAM
 
 def get_params(model: nn.Module, weight_decay: float) -> list:
     bn_params = [v for n, v in model.named_parameters() if ('bn' in n) or ('bias' in n)]
@@ -46,6 +48,15 @@ def get_optim(cfg: Config, model: nn.Module, num_steps_per_epoch: int) -> Optimi
                                      warmup_steps=num_steps_per_epoch * optim_cfg.warmup_epochs,
                                      r=optim_cfg.r,
                                      weight_lr_power=optim_cfg.weight_lr_power)
+        case "sgd-sam":
+            assert isinstance(optim_cfg, SGDSAMConfig)
+            return SAM(get_params(model, optim_cfg.weight_decay),
+                       base_optimizer=SGD,
+                       lr=cfg.train.lr,
+                       momentum=optim_cfg.momentum,
+                       rho=optim_cfg.rho,
+                       adaptive=optim_cfg.adaptive,
+                       v2=optim_cfg.v2)
         case _:
             raise ValueError(f"Unknown optimizer: {cfg.train.optim.name}")
 

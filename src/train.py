@@ -47,6 +47,7 @@ from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DA
 from ffcv.loader import Loader
 from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
 from src.models import load_model
+from src.custom_optims.sam import SAM
 
 '''
     Functions
@@ -90,6 +91,67 @@ def train_epoch(cfg: Config,
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.train.grad_clip_norm)
         scaler.step(optimizer)
         scaler.update()
+        lr_scheduler.step()
+
+        # Update metrics
+        _loss = loss.detach().item()
+        loss_metric.update(_loss)
+        lr = optimizer.param_groups[0]['lr'] if not is_schedule_free_optim(cfg) else optimizer.param_groups[0]['scheduled_lr']
+        step += 1
+
+        if rank == 0:
+            if cfg.train.log.wandb_on and (step % cfg.train.log.log_freq == 0):
+                wandb.log({'loss': loss_metric.avg, 'lr': lr}, step=step)
+
+            if step % cfg.train.log.log_freq == 0:
+                throughput_metric.update((images.size(0) * cfg.train.network.world_size) / (time.time() - iter_start_time), images.size(0))
+                logger.info(f'step: {step} ({throughput_metric.avg:5.2f} imgs/s), loss: {loss_metric.avg:.6f}' + \
+                        f', lr: {lr:.6f}, mem: {torch.cuda.max_memory_allocated() / (1024 ** 3):.2f} GB')
+        profiler.step()
+        del images, labels, pred, loss
+    return loss_metric.global_avg, step, time.time() - start_time
+
+def train_epoch_for_sam(cfg: Config,
+                        model: Any,
+                        train_ds: DALIWrapper | Loader,
+                        criterion: Module,
+                        optimizer: SAM,
+                        lr_scheduler: LRScheduler,
+                        epoch: int,
+                        step: int,
+                        scaler: GradScaler,
+                        profiler: Any) -> Tuple[float, int, float]:
+    assert cfg.train.grad_clip_norm == 0
+    assert cfg.train.use_amp == False
+    start_time = time.time()
+    model.train()
+
+    loss_metric = SmoothedValue(cfg.train.log.log_freq)
+    throughput_metric = SmoothedValue(cfg.train.log.log_freq)
+    if rank == 0:
+        logger.info(f'[Train Epoch {epoch+1}]')
+
+    for images, labels in train_ds:
+        iter_start_time = time.time()
+        # First step
+        optimizer.zero_grad()
+        optimizer.first_step(zero_grad=True)
+
+        # Forward pass
+        # with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+        pred = model(images)
+        loss = criterion(pred, labels.view(-1))
+
+        # Backward pass
+        # scaler.scale(loss).backward()
+        loss.backward()
+        # scaler.unscale_(optimizer)
+        # scaler.step(optimizer)
+        
+        # Second step
+        optimizer.second_step(zero_grad=True)
+
+        # scaler.update()
         lr_scheduler.step()
 
         # Update metrics
@@ -260,16 +322,28 @@ def main():
         ),
     ) as profiler:
         for epoch in range(start_epoch, cfg.train.max_epochs):
-            train_loss, global_step, epoch_train_time = train_epoch(cfg,
-                                                                    compiled_model,
-                                                                    train_ds,
-                                                                    criterion,
-                                                                    optimizer,
-                                                                    lr_scheduler,
-                                                                    epoch,
-                                                                    global_step,
-                                                                    scaler,
-                                                                    profiler)
+            if isinstance(optimizer, SAM):
+                train_loss, global_step, epoch_train_time = train_epoch_for_sam(cfg,
+                                                                                compiled_model,
+                                                                                train_ds,
+                                                                                criterion,
+                                                                                optimizer,
+                                                                                lr_scheduler,
+                                                                                epoch,
+                                                                                global_step,
+                                                                                scaler,
+                                                                                profiler)
+            else:
+                train_loss, global_step, epoch_train_time = train_epoch(cfg,
+                                                                        compiled_model,
+                                                                        train_ds,
+                                                                        criterion,
+                                                                        optimizer,
+                                                                        lr_scheduler,
+                                                                        epoch,
+                                                                        global_step,
+                                                                        scaler,
+                                                                        profiler)
             total_train_time += epoch_train_time
             val_loss, val_acc1, val_acc5, val_samples = valid(cfg,
                                                               compiled_model,

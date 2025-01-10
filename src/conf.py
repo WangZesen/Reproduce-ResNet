@@ -88,7 +88,15 @@ class AdamWScheduleFreeConfig(_BaseModel):
     weight_lr_power: float = Field(default=2.0)
     num_samples_for_stats: int = Field(default=102400)
 
-ALL_OPTIMS: TypeAlias = Union[AdamConfig, SGDConfig, SGDScheduleFreeConfig, AdamWScheduleFreeConfig]
+class SGDSAMConfig(_BaseModel):
+    name: Literal['sgd-sam'] = 'sgd-sam'
+    weight_decay: float = Field(default=1e-4)
+    momentum: float = Field(default=0.9)
+    rho: float = Field(default=0.05)
+    adaptive: bool = Field(default=True)
+    v2: bool = Field(default=True, description='Use Single-step SAM if set to True, otherwise use two-step (original) SAM')
+
+ALL_OPTIMS: TypeAlias = Union[AdamConfig, SGDConfig, SGDScheduleFreeConfig, AdamWScheduleFreeConfig, SGDSAMConfig]
 SCHEDULEFREE_OPTIMS = [SGDScheduleFreeConfig, AdamWScheduleFreeConfig]
 
 class CosineLRSchedulerConfig(_BaseModel):
