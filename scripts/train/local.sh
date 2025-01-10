@@ -2,6 +2,7 @@ export LOGLEVEL=INFO
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
 export JOB_ID=$(date +%Y%m%d_%H%M%S)
 export NUM_GPUS=$(($(echo $CUDA_VISIBLE_DEVICES | grep -o , | wc -l)+1))
+export TMPDIR=/tmp
 
 mkdir -p log/$JOB_ID
 cp $2 log/$JOB_ID/data_cfg.toml

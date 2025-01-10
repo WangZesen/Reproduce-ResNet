@@ -16,7 +16,6 @@ if local_world_size > 1:
     devices = os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')
     assert len(devices) == local_world_size, 'Each process must have a single GPU.'
     os.environ['CUDA_VISIBLE_DEVICES'] = devices[local_rank]
-slurm_id = os.environ.get('SLURM_JOB_ID', '0')
 models = subprocess.check_output('nvidia-smi -L', shell=True).decode('utf-8')
 if 'Tesla T4' in models:
     os.environ['NCCL_IB_HCA'] = '=mlx5_0:1'
@@ -280,8 +279,8 @@ def main():
             wandb.init(
                 project=cfg.train.log.wandb_project,
                 config=cfg.model_dump(),
-                name=slurm_id,
-                dir=os.environ['TMPDIR']
+                name=cfg.train.log.job_id,
+                dir=os.environ.get('TMPDIR', '/tmp')
             )
         logger.info(model)
         with open(os.path.join(cfg.train.log.log_dir, 'data_cfg.dump.toml'), 'wb') as f:
