@@ -3,7 +3,6 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=A40:4
 #SBATCH -t 8:00:00
-#SBATCH --switches=1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
 
