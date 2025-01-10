@@ -17,5 +17,5 @@ srun $1 \
     --standalone \
     --nproc_per_node=4 \
     --rdzv-backend=c10d \
-    src/train.py --data-cfg log/$SLURM_JOB_ID/data_cfg.toml --train-cfg log/$SLURM_JOB_ID/train_cfg.toml
+    -m src.train --data-cfg log/$SLURM_JOB_ID/data_cfg.toml --train-cfg log/$SLURM_JOB_ID/train_cfg.toml
 

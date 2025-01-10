@@ -24,5 +24,5 @@ srun $1 \
     --rdzv-backend=c10d \
     --rdzv-id=$RANDOM \
     --rdzv-endpoint=$head_node_ip:28052 \
-    src/train.py --data-cfg log/$SLURM_JOB_ID/data_cfg.toml --train-cfg log/$SLURM_JOB_ID/train_cfg.toml
+    -m src.train --data-cfg log/$SLURM_JOB_ID/data_cfg.toml --train-cfg log/$SLURM_JOB_ID/train_cfg.toml
 
