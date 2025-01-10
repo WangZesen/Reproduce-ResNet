@@ -79,7 +79,7 @@ def train_epoch(cfg: Config,
         iter_start_time = time.time()
         # Forward pass
         optimizer.zero_grad()
-        with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+        with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
             pred = model(images)
             loss = criterion(pred, labels.view(-1))
 
@@ -179,7 +179,7 @@ def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) ->
 
     for images, _ in stats_ds:
         if cnt < optim_cfg.num_samples_for_stats: # type: ignore
-            with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+            with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
                 with torch.no_grad():
                     model(images)
             cnt += images.size(0) * cfg.train.network.world_size
@@ -207,7 +207,7 @@ def valid(cfg: Config,
         logger.info(f'[Validate Epoch {epoch+1}]')
 
     for images, labels in valid_ds:
-        with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+        with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
             logit = model(images)
             loss = criterion(logit, labels.view(-1))
         acc1, acc5 = get_accuracy(logit, labels, topk=(1, 5))
