@@ -121,7 +121,7 @@ def train_epoch_for_sam(cfg: Config,
                         scaler: GradScaler,
                         profiler: Any) -> Tuple[float, int, float]:
     assert cfg.train.grad_clip_norm == 0
-    assert cfg.train.use_amp == False
+    # assert cfg.train.use_amp == False
     start_time = time.time()
     model.train()
 
@@ -137,21 +137,18 @@ def train_epoch_for_sam(cfg: Config,
         optimizer.first_step(zero_grad=True)
 
         # Forward pass
-        # with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
-        pred = model(images)
-        loss = criterion(pred, labels.view(-1))
+        with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
+            pred = model(images)
+            loss = criterion(pred, labels.view(-1))
 
         # Backward pass
-        # scaler.scale(loss).backward()
-        loss.backward()
-        # scaler.unscale_(optimizer)
-        # scaler.step(optimizer)
-        
+        scaler.scale(loss).backward()
         # Second step
-        optimizer.second_step(zero_grad=True)
+        scaler.step(optimizer)
 
-        # scaler.update()
+        scaler.update()
         lr_scheduler.step()
+        optimizer.zero_grad()
 
         # Update metrics
         _loss = loss.detach().item()
@@ -175,7 +172,6 @@ def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) ->
     model.train()
     cnt = 0
     optim_cfg = cfg.train.optim
-    assert any(isinstance(optim_cfg, opt) for opt in SCHEDULEFREE_OPTIMS)
 
     for images, _ in stats_ds:
         if cnt < optim_cfg.num_samples_for_stats: # type: ignore
@@ -194,6 +190,9 @@ def valid(cfg: Config,
           epoch: int) -> Tuple[float, float, float, int]:
     if is_schedule_free_optim(cfg):
         optimizer.eval() # type: ignore
+        collect_bn_stats(cfg, model, stats_ds)
+        sync_model_buffers(model)
+    elif epoch == cfg.train.max_epochs - 1:
         collect_bn_stats(cfg, model, stats_ds)
         sync_model_buffers(model)
 

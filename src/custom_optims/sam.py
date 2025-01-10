@@ -50,12 +50,8 @@ class SAM(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self, closure=None): # type: ignore
-        assert closure is not None, "Sharpness Aware Minimization requires closure, but it was not provided"
-        closure = torch.enable_grad()(closure)  # the closure should do a full forward-backward pass
-
-        self.first_step(zero_grad=True)
-        closure()
-        self.second_step()
+        assert closure is None
+        self.second_step(zero_grad=False)
 
     def _grad_norm(self):
         shared_device = self.param_groups[0]["params"][0].device  # put everything on the same device, in case of model parallelism

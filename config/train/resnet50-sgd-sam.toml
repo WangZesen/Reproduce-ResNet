@@ -3,7 +3,7 @@ max_epochs = 90
 lr = 1.0
 label_smoothing = 0.1
 arch = "resnet50"
-use_amp = false
+use_amp = true
 
 [preprocess]
 preload_local = true
