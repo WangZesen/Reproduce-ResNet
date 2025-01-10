@@ -117,7 +117,8 @@ class Log(_BaseModel):
     @computed_field
     @property
     def job_id(self) -> str:
-        return os.environ.get('SLURM_JOB_ID', '0') if 'SLURM_JOB_ID' in os.environ else os.environ.get('JOB_ID', '0')
+        return os.environ.get('JOB_ID', '0') if 'JOB_ID' in os.environ else \
+            os.environ.get('SLURM_JOB_ID', '0')
 
     @computed_field
     @property

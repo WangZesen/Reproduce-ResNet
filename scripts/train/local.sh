@@ -7,6 +7,9 @@ mkdir -p log/$JOB_ID
 cp $2 log/$JOB_ID/data_cfg.toml
 cp $3 log/$JOB_ID/train_cfg.toml
 
+echo "Job ID: $JOB_ID"
+echo "Log Directory: log/$JOB_ID"
+
 $1 --standalone \
     --nproc_per_node=$NUM_GPUS \
     --rdzv-backend=c10d \
