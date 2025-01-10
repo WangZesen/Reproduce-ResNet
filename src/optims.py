@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.optim import Optimizer, Adam, SGD, AdamW
+from torch.optim import Optimizer, Adam, SGD
 from torch.optim.lr_scheduler import LRScheduler
 from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, CosineLRSchedulerConfig, AdamWScheduleFreeConfig
-from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeReference
+from schedulefree import SGDScheduleFree, AdamWScheduleFree
 
 def get_params(model: nn.Module, weight_decay: float) -> list:
     bn_params = [v for n, v in model.named_parameters() if ('bn' in n) or ('bias' in n)]

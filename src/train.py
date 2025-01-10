@@ -47,7 +47,6 @@ from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DA
 from ffcv.loader import Loader
 from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
 from src.models import load_model
-from schedulefree import SGDScheduleFree, AdamWScheduleFree, SGDScheduleFreeReference
 
 '''
     Functions
