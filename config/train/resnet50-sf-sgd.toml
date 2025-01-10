@@ -1,6 +1,6 @@
 batch_size = 1024
 max_epochs = 90
-lr = 6.0
+lr = 10
 label_smoothing = 0.1
 arch = "resnet50"
 use_amp = true
@@ -17,7 +17,7 @@ name = 'sgd-schedule-free'
 warmup_epochs = 5
 momentum = 0.9
 weight_decay = 0.00005
-r = 0.0
+r = 0.75
 weight_lr_power = 2.0
 num_samples_for_stats = 102400
 
