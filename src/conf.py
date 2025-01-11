@@ -101,6 +101,7 @@ class CosineLRSchedulerConfig(_BaseModel):
     name: Literal['cosine'] = Field(default='cosine')
     warmup_epochs: int = Field(default=5)
     warmup_decay: float = Field(default=0.01)
+    eta_min: float = Field(default=1e-5)
 
 
 class ConstantLRSchedulerConfig(_BaseModel):

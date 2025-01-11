@@ -16,8 +16,8 @@ if local_world_size > 1:
     devices = os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')
     assert len(devices) == local_world_size, 'Each process must have a single GPU.'
     os.environ['CUDA_VISIBLE_DEVICES'] = devices[local_rank]
-models = subprocess.check_output('nvidia-smi -L', shell=True).decode('utf-8')
-if 'Tesla T4' in models:
+gpu_models = subprocess.check_output('nvidia-smi -L', shell=True).decode('utf-8')
+if 'Tesla T4' in gpu_models:
     os.environ['NCCL_IB_HCA'] = '=mlx5_0:1'
 
 from loguru import logger
@@ -29,9 +29,8 @@ import wandb
 import torch
 import random
 import tomli_w
-from itertools import islice
 import pandas as pd
-from typing import Any, Tuple, Final, cast
+from typing import Any, Tuple, cast
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
