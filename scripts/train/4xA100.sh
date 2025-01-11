@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=A100:4
 #SBATCH -C MEM512
-#SBATCH -t 4:00:00
+#SBATCH -t 8:00:00
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
 
