@@ -75,7 +75,6 @@ class SGDScheduleFreeConfig(_BaseModel):
     momentum: float = Field(default=0.9)
     r: float = Field(default=0.0)
     weight_lr_power: float = Field(default=2.0)
-    num_samples_for_stats: int = Field(default=102400)
 
 class AdamWScheduleFreeConfig(_BaseModel):
     name: Literal['adamw-schedule-free'] = 'adamw-schedule-free'
@@ -86,7 +85,6 @@ class AdamWScheduleFreeConfig(_BaseModel):
     epsilon: float = Field(default=1e-8)
     r: float = Field(default=0.0)
     weight_lr_power: float = Field(default=2.0)
-    num_samples_for_stats: int = Field(default=102400)
 
 class SGDSAMConfig(_BaseModel):
     name: Literal['sgd-sam'] = 'sgd-sam'
@@ -176,6 +174,7 @@ class Train(_BaseModel):
     reproduce: Reproduce = Field(default_factory=Reproduce)
     log: Log = Field(default_factory=Log)
     network: Network = Field(default_factory=Network)
+    num_samples_for_stats: int = Field(default=102400)
 
     @computed_field(repr=False)
     @property

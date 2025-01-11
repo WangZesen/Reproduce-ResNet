@@ -120,8 +120,8 @@ def train_epoch_for_sam(cfg: Config,
                         step: int,
                         scaler: GradScaler,
                         profiler: Any) -> Tuple[float, int, float]:
+    optim_cfg = cast(SAM, cfg.train.optim)
     assert cfg.train.grad_clip_norm == 0
-    # assert cfg.train.use_amp == False
     start_time = time.time()
     model.train()
 
@@ -134,7 +134,17 @@ def train_epoch_for_sam(cfg: Config,
         iter_start_time = time.time()
         # First step
         optimizer.zero_grad()
-        optimizer.first_step(zero_grad=True)
+        if not optim_cfg.v2:
+            optimizer.step = optimizer.first_step # type: ignore
+            with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
+                pred = model(images)
+                loss = criterion(pred, labels.view(-1))
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+        else:
+            optimizer.first_step(zero_grad=True)
 
         # Forward pass
         with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
@@ -144,8 +154,10 @@ def train_epoch_for_sam(cfg: Config,
         # Backward pass
         scaler.scale(loss).backward()
         # Second step
-        scaler.step(optimizer)
+        if not optim_cfg.v2:
+            optimizer.step = optimizer.second_step # type: ignore
 
+        scaler.step(optimizer)
         scaler.update()
         lr_scheduler.step()
         optimizer.zero_grad()
@@ -171,10 +183,8 @@ def train_epoch_for_sam(cfg: Config,
 def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) -> None:
     model.train()
     cnt = 0
-    optim_cfg = cfg.train.optim
-
     for images, _ in stats_ds:
-        if cnt < optim_cfg.num_samples_for_stats: # type: ignore
+        if cnt < cfg.train.num_samples_for_stats:
             with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
                 with torch.no_grad():
                     model(images)

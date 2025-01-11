@@ -17,8 +17,8 @@ name = 'sgd-sam'
 momentum = 0.875
 weight_decay = 0.000030517578125
 rho = 0.05
-adaptive = true
-v2 = true
+adaptive = false
+v2 = false
 
 [lr_scheduler]
 name = 'cosine'
