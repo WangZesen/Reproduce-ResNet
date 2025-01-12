@@ -20,11 +20,13 @@ For the experiment, the model is trained by four A40 GPUs. The reproduced result
 
 The table below reports the total number of iterations, the accuracies evaluated by the trained model at the last iteration, and the total training time.
 
-|  Epoch  | Steps |        Optimizer         |   Top-1 Acc.    | Top-5 Acc. | Training Time (hours) |
-|:------:|:---:|:------------------:|:----:|:---------------:|:---------------------:|
-| 90 | 112590 | Adam | 76.0133 ± 0.1125 |    92.9093 ± 0.0571    | 5.2771 ± 0.0026 |
-| 90 | 112590 | Schedule-free SGD | 76.7047 ± 0.0500 |    93.2113 ± 0.0698    | 5.1703 ± 0.0058 |
-| 90 | 112590 | SGD | 77.3860 ± 0.1773 |    93.5580 ± 0.0675    | 5.1837 ± 0.0258 |
+|  Epoch  | Steps  |        Optimizer         |   Top-1 Acc.    | Top-5 Acc. | Training Time (hours) |
+|:-------:|:------:|:------------------------:|:----:|:---------------:|:---------------------:|
+|   90    | 112590 | Adam                     | 76.0133 ± 0.1125 |    92.9093 ± 0.0571    | 5.2771 ± 0.0026 |
+|   90    | 112590 | Schedule-free SGD        | 76.7047 ± 0.0500 |    93.2113 ± 0.0698    | 5.1703 ± 0.0058 |
+|   90    | 112590 | SGD                      | 77.3860 ± 0.1773 |    93.5580 ± 0.0675    | 5.1837 ± 0.0258 |
+|   90    | 112590 | SAM-v1                   | 77.6467 ± 0.2698 |    93.7420 ± 0.0663    |        -        |
+|   90    | 112590 | SAM-v2                   | 77.4520 ± 0.1920 |    93.5690 ± 0.0780    |        -        |
 
 
 ## Reproduce Experiments
