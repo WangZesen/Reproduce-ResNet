@@ -187,13 +187,12 @@ class Config(_BaseModel):
     data: Data = Field(default_factory=Data)
     train: Train = Field(default_factory=Train)
 
+def _load_toml(config_dir):
+    with open(config_dir, 'rb') as f:
+        config = tomllib.load(f)
+    return config
 
 def parse_config() -> Config:
-    def _load_toml(config_dir):
-        with open(config_dir, 'rb') as f:
-            config = tomllib.load(f)
-        return config
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-cfg', type=str, required=True)
     parser.add_argument('--train-cfg', type=str, required=True)
@@ -203,3 +202,12 @@ def parse_config() -> Config:
         'train': _load_toml(args.train_cfg)
     }
     return Config.model_validate(cfg)
+
+def parse_config_from_eval_dir(eval_dir: str) -> Config:
+    cfg = {
+        'data': _load_toml(os.path.join(eval_dir, 'data_cfg.toml')),
+        'train': _load_toml(os.path.join(eval_dir, 'train_cfg.toml'))
+    }
+    return Config.model_validate(cfg)
+
+    

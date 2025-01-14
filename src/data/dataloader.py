@@ -20,7 +20,7 @@ from ffcv.fields.rgb_image import CenterCropRGBImageDecoder, \
     RandomResizedCropRGBImageDecoder, ResizedCropRGBImageDecoder
 from ffcv.fields.basics import IntDecoder
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) * 255
 IMAGENET_STD = np.array([0.229, 0.224, 0.225]) * 255
@@ -215,7 +215,12 @@ def get_dali_valid_loader(cfg: Config):
     return DALIWrapper(valid_loader)
 
 
-def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecoder]:
+def get_ffcv_train_loader(cfg: Config,
+                          distributed: bool = True,
+                          batch_size: Optional[int] = None) -> Tuple[Loader, ResizedCropRGBImageDecoder]:
+    if batch_size is None:
+        batch_size = cfg.train.batch_size_per_local_batch
+    
     dataloader_cfg = cfg.data.dataloader
     assert isinstance(dataloader_cfg, FFCVConfig)
     ffcv_train_data_dir = dataloader_cfg.train_data_dir
@@ -242,7 +247,7 @@ def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecod
     order = OrderOption.RANDOM
 
     loader = Loader(ffcv_train_data_dir,
-                    batch_size=cfg.train.batch_size_per_local_batch,
+                    batch_size=batch_size,
                     num_workers=dataloader_cfg.num_data_workers,
                     order=order,
                     os_cache=dataloader_cfg.in_memory,
@@ -251,13 +256,18 @@ def get_ffcv_train_loader(cfg: Config) -> Tuple[Loader, ResizedCropRGBImageDecod
                         "image": image_pipeline,
                         "label": label_pipeline
                     },
-                    distributed=True,
+                    distributed=distributed,
                     seed=cfg.train.reproduce.seed)
     
     return loader, decoder
 
 
-def get_ffcv_valid_loader(cfg: Config) -> Loader:
+def get_ffcv_valid_loader(cfg: Config,
+                          distributed: bool = True,
+                          batch_size: Optional[int] = None) -> Loader:
+    if batch_size is None:
+        batch_size = cfg.train.batch_size_per_local_batch
+
     dataloader_cfg = cfg.data.dataloader
     assert isinstance(dataloader_cfg, FFCVConfig)
     ffcv_valid_data_dir = dataloader_cfg.val_data_dir
@@ -282,7 +292,7 @@ def get_ffcv_valid_loader(cfg: Config) -> Loader:
     ]
 
     loader = Loader(ffcv_valid_data_dir,
-                    batch_size=cfg.train.batch_size_per_local_batch,
+                    batch_size=batch_size,
                     num_workers=dataloader_cfg.num_data_workers,
                     order=OrderOption.SEQUENTIAL,
                     drop_last=False,
@@ -290,5 +300,5 @@ def get_ffcv_valid_loader(cfg: Config) -> Loader:
                         "image": image_pipeline,
                         "label": label_pipeline
                     },
-                    distributed=True)
+                    distributed=distributed)
     return loader
