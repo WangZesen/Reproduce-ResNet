@@ -115,7 +115,7 @@ def main():
     model = model.to('cuda')
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing).cuda()
 
-    checkpoints = glob.glob(os.path.join(eval_dir, 'checkpoints', '*.pt'))
+    checkpoints = sorted(glob.glob(os.path.join(eval_dir, 'checkpoints', '*.pt')))
     logger.info('Checkpoints: ' + str(checkpoints))
 
     test_results = pd.DataFrame(columns=['epoch', 'val_loss', 'val_acc1', 'val_acc5', 'val_samples'])
