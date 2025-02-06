@@ -16,7 +16,7 @@ if local_world_size > 1:
     devices = os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')
     assert len(devices) == local_world_size, 'Each process must have a single GPU.'
     os.environ['CUDA_VISIBLE_DEVICES'] = devices[local_rank]
-gpu_models = subprocess.check_output('nvidia-smi -L', shell=True).decode('utf-8')
+gpu_models = subprocess.check_output('nvidia-smi --query-gpu=name --format=csv,noheader', shell=True).decode('utf-8').split('\n')
 if 'Tesla T4' in gpu_models:
     os.environ['NCCL_IB_HCA'] = '=mlx5_0:1'
 
@@ -27,10 +27,13 @@ logger.add(sys.stdout)
 import time
 import wandb
 import torch
+import neptune
+from neptune import Run
+from neptune.integrations.python_logger import NeptuneHandler
 import random
 import tomli_w
 import pandas as pd
-from typing import Any, Tuple, cast
+from typing import Any, Tuple, cast, Optional
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
@@ -63,7 +66,8 @@ def train_epoch(cfg: Config,
                 epoch: int,
                 step: int,
                 scaler: GradScaler,
-                profiler: Any) -> Tuple[float, int, float]:
+                profiler: Any,
+                neptune_run: Optional[Run]) -> Tuple[float, int, float]:
     start_time = time.time()
     model.train()
     if is_schedule_free_optim(cfg):
@@ -100,7 +104,10 @@ def train_epoch(cfg: Config,
         if rank == 0:
             if cfg.train.log.wandb_on and (step % cfg.train.log.log_freq == 0):
                 wandb.log({'loss': loss_metric.avg, 'lr': lr}, step=step)
-
+            if cfg.train.log.neptune_on and (step % cfg.train.log.log_freq == 0):
+                assert neptune_run is not None
+                neptune_run['train/loss'].append(value=loss_metric.avg, step=step)
+                neptune_run['train/lr'].append(value=lr, step=step)
             if step % cfg.train.log.log_freq == 0:
                 throughput_metric.update((images.size(0) * cfg.train.network.world_size) / (time.time() - iter_start_time), images.size(0))
                 logger.info(f'step: {step} ({throughput_metric.avg:5.2f} imgs/s), loss: {loss_metric.avg:.6f}' + \
@@ -118,7 +125,8 @@ def train_epoch_for_sam(cfg: Config,
                         epoch: int,
                         step: int,
                         scaler: GradScaler,
-                        profiler: Any) -> Tuple[float, int, float]:
+                        profiler: Any,
+                        neptune_run: Optional[Run]) -> Tuple[float, int, float]:
     optim_cfg = cast(SGDSAMConfig, cfg.train.optim)
     assert cfg.train.grad_clip_norm == 0
     start_time = time.time()
@@ -169,7 +177,10 @@ def train_epoch_for_sam(cfg: Config,
         if rank == 0:
             if cfg.train.log.wandb_on and (step % cfg.train.log.log_freq == 0):
                 wandb.log({'loss': loss_metric.avg, 'lr': lr}, step=step)
-
+            if cfg.train.log.neptune_on and (step % cfg.train.log.log_freq == 0):
+                assert neptune_run is not None
+                neptune_run['train/loss'].append(value=loss_metric.avg, step=step)
+                neptune_run['train/lr'].append(value=lr, step=step)
             if step % cfg.train.log.log_freq == 0:
                 throughput_metric.update((images.size(0) * cfg.train.network.world_size) / (time.time() - iter_start_time), images.size(0))
                 logger.info(f'step: {step} ({throughput_metric.avg:5.2f} imgs/s), loss: {loss_metric.avg:.6f}' + \
@@ -279,15 +290,29 @@ def main():
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     scaler = torch.GradScaler(device='cuda', enabled=cfg.train.use_amp)
 
+    neptune_run = None
     if rank == 0:
-        logger.info(cfg)
         if cfg.train.log.wandb_on:
             wandb.init(
-                project=cfg.train.log.wandb_project,
+                project=cfg.train.log.project,
                 config=cfg.model_dump(),
                 name=cfg.train.log.job_id,
                 dir=os.environ.get('TMPDIR', '/tmp')
             )
+        if cfg.train.log.neptune_on:
+            neptune_run = neptune.init_run(
+                project=cfg.train.log.neptune_workspace + '/' + cfg.train.log.project,
+                name=f"{cfg.train.arch}-{cfg.train.optim.name}-{cfg.train.network.world_size}GPU",
+                tags=[cfg.train.arch, cfg.train.optim.name, f"{cfg.train.network.world_size}GPU", gpu_models[0]],
+                source_files=[],
+                monitoring_namespace='monitoring',
+                capture_hardware_metrics=True,
+                capture_stderr=True,
+                capture_stdout=True
+            )
+            neptune_run['config'] = cfg.model_dump()
+            logger.add(NeptuneHandler(run=neptune_run))
+        logger.info(cfg)
         logger.info(model)
         with open(os.path.join(cfg.train.log.log_dir, 'data_cfg.dump.toml'), 'wb') as f:
             tomli_w.dump(cfg.data.model_dump(exclude_none=True), f)
@@ -337,7 +362,8 @@ def main():
                                                                                 epoch,
                                                                                 global_step,
                                                                                 scaler,
-                                                                                profiler)
+                                                                                profiler,
+                                                                                neptune_run)
             else:
                 train_loss, global_step, epoch_train_time = train_epoch(cfg,
                                                                         model,
@@ -348,7 +374,8 @@ def main():
                                                                         epoch,
                                                                         global_step,
                                                                         scaler,
-                                                                        profiler)
+                                                                        profiler,
+                                                                        neptune_run)
             total_train_time += epoch_train_time
             val_loss, val_acc1, val_acc5, val_samples = valid(cfg,
                                                               model,
@@ -389,6 +416,14 @@ def main():
                         'total_train_time': total_train_time
                     }
                     wandb.log(log_data, step=global_step)
+                if cfg.train.log.neptune_on:
+                    assert neptune_run is not None
+                    neptune_run['train/epoch_time'].append(value=epoch_train_time, step=global_step)
+                    neptune_run['val/loss'].append(value=stats[1], step=global_step)
+                    neptune_run['val/acc@1'].append(value=stats[2], step=global_step)
+                    neptune_run['val/acc@5'].append(value=stats[3], step=global_step)
+                    neptune_run['epoch'].append(value=epoch+1, step=global_step)
+                    neptune_run['total_train_time'].append(value=total_train_time, step=global_step)
 
                 train_log.loc[epoch - start_epoch] = [epoch + 1, # type: ignore
                                                       global_step,
@@ -406,6 +441,9 @@ def main():
         logger.info('Training finished.')
         if cfg.train.log.wandb_on:
             wandb.finish()
+        if cfg.train.log.neptune_on:
+            assert neptune_run is not None
+            neptune_run.stop()
 
 if __name__ == '__main__':
     main()

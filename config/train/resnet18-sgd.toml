@@ -27,6 +27,7 @@ seed = 810977
 
 [log]
 log_freq = 100
-wandb_on = true
-wandb_project = "reproduce_resnet"
+wandb_on = false
+project = "imagenet-baselines"
+neptune_on = true
 checkpoint_freq = 45

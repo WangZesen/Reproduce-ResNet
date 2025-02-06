@@ -117,8 +117,10 @@ class Reproduce(_BaseModel):
 
 class Log(_BaseModel):
     log_freq: int = Field(default=100)
-    wandb_on: bool = Field(default=True)
-    wandb_project: str = Field(default='reproduce_resnet')
+    wandb_on: bool = Field(default=False)
+    neptune_on: bool = Field(default=True)
+    neptune_workspace: str = Field(default=os.environ['NEPTUNE_WORKSPACE'])
+    project: str = Field(default='imagenet-baselines')
     checkpoint_freq: int = Field(default=45)
 
     @computed_field
