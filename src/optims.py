@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from src.conf import Config, AdamConfig, SGDConfig, SGDScheduleFreeConfig, \
     CosineLRSchedulerConfig, AdamWScheduleFreeConfig, SGDSAMConfig
 from schedulefree import SGDScheduleFree, AdamWScheduleFree
-from src.custom_optims.sam import SAM
+from src.custom_optims.sam import SAM, SAMV1, S2SAM
 from typing import Callable, List, Tuple
 from functools import partial
 
@@ -108,13 +108,18 @@ def get_optim_fn(cfg: Config, num_steps_per_epoch: int) -> Callable[[List[Tuple[
                            rho: float,
                            adaptive: bool,
                            v2: bool) -> Optimizer:
-                return SAM(get_param_groups_from_list(params, optim_cfg.weight_decay),
-                           base_optimizer=SGD,
-                           lr=lr,
-                           momentum=momentum,
-                           rho=rho,
-                           adaptive=adaptive,
-                           v2=v2)
+                if not v2:
+                    return SAMV1(get_param_groups_from_list(params, optim_cfg.weight_decay),
+                                 base_optimizer=SGD,
+                                 lr=lr,
+                                 momentum=momentum,
+                                 rho=rho)
+                else:
+                    return S2SAM(get_param_groups_from_list(params, optim_cfg.weight_decay),
+                                 base_optimizer=SGD,
+                                 lr=lr,
+                                 momentum=momentum,
+                                 rho=rho)
             return partial(sgd_sam_fn,
                            lr=cfg.train.lr,
                            momentum=optim_cfg.momentum,

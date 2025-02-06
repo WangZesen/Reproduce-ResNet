@@ -1,0 +1,35 @@
+batch_size = 1024
+max_epochs = 90
+lr = 1.0
+label_smoothing = 0.1
+arch = "resnet18"
+use_amp = true
+
+[preprocess]
+preload_local = true
+interpolation = "bilinear"
+train_crop_size = 176
+val_image_size = 256
+val_crop_size = 224
+
+[optim]
+name = 'sgd-sam'
+momentum = 0.875
+weight_decay = 0.000030517578125
+rho = 0.05
+adaptive = false
+v2 = false
+
+[lr_scheduler]
+name = 'cosine'
+warmup_epochs = 5
+warmup_decay = 0.01
+
+[reproduce]
+seed = 810975
+
+[log]
+log_freq = 100
+wandb_on = true
+wandb_project = "reproduce_resnet"
+checkpoint_freq = 45

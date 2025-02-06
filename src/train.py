@@ -38,14 +38,14 @@ from torch import GradScaler
 from torch.optim.lr_scheduler import LRScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.profiler import schedule, profile, ProfilerActivity
-from src.conf import parse_config, Config, SCHEDULEFREE_OPTIMS
+from src.conf import parse_config, Config, SCHEDULEFREE_OPTIMS, SGDSAMConfig
 from src.optims import get_optim, get_lr_scheduler
 from src.data.preload import preload_to_local
 from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper, get_ffcv_train_loader, get_ffcv_valid_loader
 from ffcv.loader import Loader
 from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
 from src.models import load_model
-from src.custom_optims.sam import SAM
+from src.custom_optims.sam import SAM, SAMV1, S2SAM
 
 '''
     Functions
@@ -55,7 +55,7 @@ def is_schedule_free_optim(cfg: Config) -> bool:
     return any(isinstance(cfg.train.optim, opt) for opt in SCHEDULEFREE_OPTIMS)
 
 def train_epoch(cfg: Config,
-                model: Any,
+                model: DDP,
                 train_ds: DALIWrapper | Loader,
                 criterion: Module,
                 optimizer: Optimizer,
@@ -110,16 +110,16 @@ def train_epoch(cfg: Config,
     return loss_metric.global_avg, step, time.time() - start_time
 
 def train_epoch_for_sam(cfg: Config,
-                        model: Any,
+                        model: DDP,
                         train_ds: DALIWrapper | Loader,
                         criterion: Module,
-                        optimizer: SAM,
+                        optimizer: SAM | SAMV1 | S2SAM,
                         lr_scheduler: LRScheduler,
                         epoch: int,
                         step: int,
                         scaler: GradScaler,
                         profiler: Any) -> Tuple[float, int, float]:
-    optim_cfg = cast(SAM, cfg.train.optim)
+    optim_cfg = cast(SGDSAMConfig, cfg.train.optim)
     assert cfg.train.grad_clip_norm == 0
     start_time = time.time()
     model.train()
@@ -132,18 +132,19 @@ def train_epoch_for_sam(cfg: Config,
     for images, labels in train_ds:
         iter_start_time = time.time()
         # First step
-        optimizer.zero_grad()
         if not optim_cfg.v2:
-            optimizer.step = optimizer.first_step # type: ignore
-            with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
-                pred = model(images)
-                loss = criterion(pred, labels.view(-1))
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
+            with model.no_sync():
+                with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
+                    pred = model(images)
+                    loss = criterion(pred, labels.view(-1))
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                optimizer.first_step()
+                scaler.update()
+                optimizer.zero_grad()
         else:
-            optimizer.first_step(zero_grad=True)
+            optimizer.first_step()
+            optimizer.zero_grad()
 
         # Forward pass
         with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
@@ -152,15 +153,13 @@ def train_epoch_for_sam(cfg: Config,
 
         # Backward pass
         scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         # Second step
-        if not optim_cfg.v2:
-            optimizer.step = optimizer.second_step # type: ignore
-
-        scaler.step(optimizer)
+        optimizer.second_step()
         scaler.update()
-        lr_scheduler.step()
         optimizer.zero_grad()
 
+        lr_scheduler.step()
         # Update metrics
         _loss = loss.detach().item()
         loss_metric.update(_loss)
@@ -266,8 +265,9 @@ def main():
     '''
 
     model = load_model(cfg.train.arch, num_classes=cfg.data.num_classes)
-    model = model.to(memory_format=torch.channels_last) # type: ignore
+    # model = model.to(memory_format=torch.channels_last) # type: ignore
     model = model.to('cuda')
+    model.forward = torch.compile(model.forward)
 
     if rank == 0:
         trainable_params = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters() if p.requires_grad).values())
@@ -278,8 +278,6 @@ def main():
     model = DDP(model, gradient_as_bucket_view=True, broadcast_buffers=True)
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     scaler = torch.GradScaler(device='cuda', enabled=cfg.train.use_amp)
-
-    compiled_model = torch.compile(model)
 
     if rank == 0:
         logger.info(cfg)
@@ -329,9 +327,9 @@ def main():
         ),
     ) as profiler:
         for epoch in range(start_epoch, cfg.train.max_epochs):
-            if isinstance(optimizer, SAM):
+            if isinstance(optimizer, SAM) or isinstance(optimizer, SAMV1) or isinstance(optimizer, S2SAM):
                 train_loss, global_step, epoch_train_time = train_epoch_for_sam(cfg,
-                                                                                compiled_model,
+                                                                                model,
                                                                                 train_ds,
                                                                                 criterion,
                                                                                 optimizer,
@@ -342,7 +340,7 @@ def main():
                                                                                 profiler)
             else:
                 train_loss, global_step, epoch_train_time = train_epoch(cfg,
-                                                                        compiled_model,
+                                                                        model,
                                                                         train_ds,
                                                                         criterion,
                                                                         optimizer,
@@ -353,7 +351,7 @@ def main():
                                                                         profiler)
             total_train_time += epoch_train_time
             val_loss, val_acc1, val_acc5, val_samples = valid(cfg,
-                                                              compiled_model,
+                                                              model,
                                                               optimizer,
                                                               train_ds,
                                                               valid_ds,
