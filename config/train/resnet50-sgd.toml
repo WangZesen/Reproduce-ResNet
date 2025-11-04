@@ -28,5 +28,5 @@ seed = 810975
 [log]
 log_freq = 100
 wandb_on = true
-wandb_project = "reproduce_resnet"
+project = "reproduce_resnet"
 checkpoint_freq = 45

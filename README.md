@@ -2,13 +2,34 @@
 
 ## Introduction
 
-This repo is an unofficial reproduction of training ResNet-50 on ImageNet which is one of the most classic machine learning workloads based on PyTorch 2.3.0 (latest stable version by the time of setting up this repo). The repo provides a simple and efficient implement, which could be easiliy adapted for other optimization purpose.
+This repository provides an unofficial reproduction of training popular image classification models on the ImageNet-1K dataset. It implements a simple and efficient training pipeline based on PyTorch, supporting multiple architectures and optimization techniques.
+
+The repo focuses on reproducing classic machine learning workloads with clean, readable code that can be easily adapted for research and experimentation purposes.
+
+## Supported Models
+
+This repository supports training of several popular image classification architectures:
+
+- ResNet-18
+- ResNet-50
+- VGG-16 (with and without batch normalization)
+- Vision Transformer (ViT-B/16)
+
+## Supported Optimizers
+
+The repository implements various optimization algorithms:
+
+- **Adam** - Adaptive moment estimation
+- **SGD** - Stochastic gradient descent with momentum
+- **Schedule-Free SGD** - Schedule-free variant of SGD [1]
+- **Schedule-Free AdamW** - Schedule-free variant of AdamW [1]
+- **SAM (Sharpness-Aware Minimization)** - Both original two-step SAM (v1) and single-step SAM (v2) [2]
 
 ## Results
 
-For ResNet-50 trained on ImageNet using Adam optimizer, and without complex data augmentation (only random cropping and random horizontal flipping are used in this repo), the top-1 accuracy is roughly 76%.
+For ResNet-50 trained on ImageNet using various optimizers, and without complex data augmentation (only random cropping and random horizontal flipping are used in this repo), we achieve the following top-1 accuracy:
 
-For the experiment, the model is trained by four A40 GPUs. The reproduced results are from the average of 3 runs and the error bands represnet the interval of $\pm2$ standard deviations.
+For the experiments, models are trained using four A40 GPUs. The reproduced results are from the average of 3 runs, and the error bands represent the interval of $\pm2$ standard deviations.
 
 | ![](./doc/resnet50_imagenet/step_vs_acc1.png) | ![](./doc/resnet50_imagenet/step_vs_acc5.png)
 |:--:| :--: |
@@ -21,51 +42,38 @@ For the experiment, the model is trained by four A40 GPUs. The reproduced result
 The table below reports the total number of iterations, the accuracies evaluated by the trained model at the last iteration, and the total training time.
 
 |  Epoch  | Steps  |        Optimizer         |   Top-1 Acc.    | Top-5 Acc. | Training Time (hours) |
-|:-------:|:------:|:------------------------:|:----:|:---------------:|:---------------------:|
-|   90    | 112590 | Adam                     | 76.0133 ± 0.1125 |    92.9093 ± 0.0571    | 5.2771 ± 0.0026 |
-|   90    | 112590 | Schedule-free SGD        | 76.7047 ± 0.0500 |    93.2113 ± 0.0698    | 5.1703 ± 0.0058 |
-|   90    | 112590 | SGD                      | 77.3860 ± 0.1773 |    93.5580 ± 0.0675    | 5.1837 ± 0.0258 |
-|   90    | 112590 | SAM-v1                   | 77.6467 ± 0.2698 |    93.7420 ± 0.0663    |        -        |
-|   90    | 112590 | SAM-v2                   | 77.4520 ± 0.1920 |    93.5690 ± 0.0780    |        -        |
-
+|:-------:|:------:|:------------------------:|:---------------:|:----------:|:---------------------:|
+|   90    | 112590 | Adam                     | 76.0133 ± 0.1125 | 92.9093 ± 0.0571 | 5.2771 ± 0.0026 |
+|   90    | 112590 | Schedule-free SGD        | 76.7047 ± 0.0500 | 93.2113 ± 0.0698 | 5.1703 ± 0.0058 |
+|   90    | 112590 | SGD                      | 77.3860 ± 0.1773 | 93.5580 ± 0.0675 | 5.1837 ± 0.0258 |
+|   90    | 112590 | SAM-v1                   | 77.6467 ± 0.2698 | 93.7420 ± 0.0663 |        -        |
+|   90    | 112590 | SAM-v2                   | 77.4520 ± 0.1920 | 93.5690 ± 0.0780 |        -        |
 
 ## Reproduce Experiments
 
 > [!NOTE]
-> The instruction is for Linux systems with SLURM as workload manager. It may be subject to change for other platforms.
+> The instructions are for Linux systems with SLURM as workload manager. Modifications may be needed for other platforms.
 
 ### Python Environment
 
-Create a virtual environment using Conda. Activate the environment and install the dependencies by
+This project uses [uv](https://docs.astral.sh/uv/) for environment management. To set up the environment:
 
 ```bash
-# install latest version of pytorch: see https://pytorch.org/get-started/locally/ for other platforms
-pip install torch torchvision torchaudio
-# install dali with cuda-11.0 as it comes with cuda dependencies
-pip install --extra-index-url https://pypi.nvidia.com --upgrade nvidia-dali-cuda110
-# install ffcv
-conda install cupy pkg-config libjpeg-turbo opencv numba -c conda-forge -c pytorch
-pip install ffcv
-# install schedule-free optimizer
-pip install schedulefree
-# install other dependencies
-pip install wandb seaborn loguru scipy tqdm tomli-w pydantic
+uv sync
 ```
 
-One has to login to wandb for uploading the metrics before runing the experiments (wandb logging is on by default).
-```
-wandb login
-```
+> [!NOTE]
+> A list of dependencies is available at [`requirements.txt`](./requirements.txt) for reference.
 
 ### Prepare Data
 
 #### Download ImageNet (ILSVRC 2012)
 
-Since it needs to sign an agreement for downloading the dataset, no direct download link to the processed dataset can be provided here.
+Since ImageNet requires agreement for downloading, no direct download link can be provided here.
 
 Download the ImageNet (ILSVRC 2012) dataset from [here](https://www.image-net.org/).
 
-Put the data under `./data/Imagenet` and arrage the data like
+Put the data under `./data/Imagenet` and arrange the data like:
 ```
 data/Imagenet/
 ├── dev
@@ -87,47 +95,70 @@ data/Imagenet/
 │   ├── ...
 ```
 
-#### ffcv Dataloader (Recommend)
-
-Use ffcv dataloader to load the whole dataset into the memory to avoid disk IO bottleneck. It's recommended to use ffcv if there is >=64GB memory per GPU.
-
-Create folder for processed dataset
-```bash
-mkdir ./data/ffcv/
-```
-
-Transform the dataset into bento format by
-```bash
-python -m src.ffcv_writer --data-cfg config/data/imagenet.toml
-```
-
-It will generate the processed datasets for training and validation under `./data/ffcv`. The total size is around 66.9GB. The preprocess configurations are 1. `500` pixel as max resolution, 2. `90` as JPG quality, and 3. all images are compressed as JPG. Please see [ffcv documentation](https://docs.ffcv.io/benchmarks.html#dataset-sizes) for details.
-
 #### DALI Dataloader
 
-No further processes need to be done for DALI dataloader.
+No further processing is needed for the DALI dataloader.
 
-### Train
+### Training
 
-The experiments are conducted on a data center using Slurm as the scheduler. To run the training with four A40 GPUs, 
+The experiments are conducted on a data center using Slurm as the scheduler. To run the training with four A40 GPUs:
 
-```
+```bash
 sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/resnet50-adam.toml
 ```
-where `<PROJECT_ACCOUNT>` is the slurm project account.
 
-One can extract the command in [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh) to run seperately if the system is not based on slurm.
+Where `<PROJECT_ACCOUNT>` is your Slurm project account.
 
-The evaulation on the validation set is done along with the training.
+For systems not based on Slurm, you can extract the command from [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh) to run separately.
 
-#### Configuration files
+Evaluation on the validation set is performed along with training.
 
-- [`config/data/imagenet.toml`](./config/data/imagenet.toml): data configuration
-- [`config/train/resnet-adam.toml`](./config/train/resnet50-adam.toml): training configuration for ResNet-50 with Adam optimizer
-- [`config/train/resnet-sf-sgd.toml`](./config/train/resnet50-sf-sgd.toml): training configuration for ResNet-50 with schedule-free SGD optimizer [1]
+#### Configuration Files
+
+The repository uses TOML configuration files to specify training parameters:
+
+- [`config/data/imagenet.toml`](./config/data/imagenet.toml): Data configuration
+- Training configurations for different models and optimizers:
+  - [`config/train/resnet50-adam.toml`](./config/train/resnet50-adam.toml): ResNet-50 with Adam optimizer
+  - [`config/train/resnet50-sgd.toml`](./config/train/resnet50-sgd.toml): ResNet-50 with SGD optimizer
+  - [`config/train/resnet50-sf-sgd.toml`](./config/train/resnet50-sf-sgd.toml): ResNet-50 with schedule-free SGD optimizer [1]
+  - [`config/train/resnet50-sgd-sam-v1.toml`](./config/train/resnet50-sgd-sam-v1.toml): ResNet-50 with SAM-v1 optimizer [2]
+  - [`config/train/resnet50-sgd-sam-v2.toml`](./config/train/resnet50-sgd-sam-v2.toml): ResNet-50 with SAM-v2 optimizer [2]
+  - [`config/train/resnet18-sgd.toml`](./config/train/resnet18-sgd.toml): ResNet-18 with SGD optimizer
+  - [`config/train/resnet18-sgd-sam-v1.toml`](./config/train/resnet18-sgd-sam-v1.toml): ResNet-18 with SAM-v1 optimizer
+  - [`config/train/resnet18-sgd-sam-v2.toml`](./config/train/resnet18-sgd-sam-v2.toml): ResNet-18 with SAM-v2 optimizer
+  - [`config/train/vit_base_16.toml`](./config/train/vit_base_16.toml): Vision Transformer with SGD optimizer
 
 See [`src/conf.py`](./src/conf.py) for detailed structure of the configuration files.
 
-## Reference
+#### Training Different Models
+
+To train different models, simply change the configuration file in the training command:
+
+```bash
+# Train ResNet-18 with SGD
+sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/resnet18-sgd.toml
+
+# Train Vision Transformer
+sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data/imagenet.toml config/train/vit_base_16.toml
+```
+
+#### Training with Different Hardware Configurations
+
+The repository provides scripts for various hardware configurations:
+- [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh): 4x A40 GPUs
+- [`scripts/train/4xA100.sh`](./scripts/train/4xA100.sh): 4x A100 GPUs
+- [`scripts/train/4xV100.sh`](./scripts/train/4xV100.sh): 4x V100 GPUs
+- [`scripts/train/8xA40.sh`](./scripts/train/8xA40.sh): 8x A40 GPUs
+- [`scripts/train/8xA100.sh`](./scripts/train/8xA100.sh): 8x A100 GPUs
+- [`scripts/train/8xV100.sh`](./scripts/train/8xV100.sh): 8x V100 GPUs
+- [`scripts/train/16xA40.sh`](./scripts/train/16xA40.sh): 16x A40 GPUs
+- [`scripts/train/16xA100.sh`](./scripts/train/16xA100.sh): 16x A100 GPUs
+- [`scripts/train/32xT4.sh`](./scripts/train/32xT4.sh): 32x T4 GPUs
+- [`scripts/train/local.sh`](./scripts/train/local.sh): Local training (single machine)
+
+## References
 
 [1] Defazio, Aaron, et al. "The road less scheduled." arXiv preprint arXiv:2405.15682 (2024). [Repo Link](https://github.com/facebookresearch/schedule_free).
+
+[2] Foret, Pierre, et al. "Sharpness-aware minimization for efficiently improving generalization." arXiv preprint arXiv:2010.01412 (2020).

@@ -7,7 +7,6 @@
 import os
 import sys
 import glob
-import subprocess
 
 from loguru import logger
 logger.remove()
@@ -30,8 +29,7 @@ from torch.profiler import schedule, profile, ProfilerActivity
 from src.conf import parse_config_from_eval_dir, Config, SCHEDULEFREE_OPTIMS
 from src.optims import get_optim, get_lr_scheduler
 from src.data.preload import preload_to_local
-from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper, get_ffcv_train_loader, get_ffcv_valid_loader
-from ffcv.loader import Loader
+from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper
 from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
 from src.models import load_model
 from src.custom_optims.sam import SAM
@@ -42,7 +40,7 @@ from tqdm import tqdm
 '''
 
 @torch.no_grad()
-def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) -> None:
+def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper) -> None:
     model.train()
     for images, _ in tqdm(stats_ds):
         with torch.autocast(device_type='cuda', enabled=cfg.train.use_amp):
@@ -51,7 +49,7 @@ def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) ->
 @torch.no_grad()
 def valid(cfg: Config,
           model: Any,
-          valid_ds: DALIWrapper | Loader,
+          valid_ds: DALIWrapper,
           criterion: Module) -> Tuple[float, float, float, int]:
     model.eval()
     total_loss = 0.
@@ -97,14 +95,12 @@ def main():
         Load data
     '''
     if cfg.data.dataloader.name == 'dali':
-        raise NotImplementedError()
         if cfg.train.preprocess.preload_local:
             preload_to_local(cfg)
         train_ds, num_batches = get_dali_train_loader(cfg)
         valid_ds = get_dali_valid_loader(cfg)
     else:
-        train_ds, _ = get_ffcv_train_loader(cfg, distributed=False, batch_size=1024)
-        valid_ds = get_ffcv_valid_loader(cfg, distributed=False, batch_size=1024)
+        raise NotImplementedError(f'DataLoader {cfg.data.dataloader.name} is not implemented.')
 
     '''
         Initialize the model, optimizer, and learning rate scheduler.

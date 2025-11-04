@@ -10,17 +10,7 @@ from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 from nvidia.dali.ops import RandomResizedCrop, CropMirrorNormalize, Resize
 from nvidia.dali.ops.random import CoinFlip
-from src.conf import Config, FFCVConfig, DaliConfig
-
-from ffcv.pipeline.operation import Operation
-from ffcv.loader import Loader, OrderOption
-from ffcv.transforms import ToTensor, ToDevice, Squeeze, NormalizeImage, \
-    RandomHorizontalFlip, ToTorchImage
-from ffcv.fields.rgb_image import CenterCropRGBImageDecoder, \
-    RandomResizedCropRGBImageDecoder, ResizedCropRGBImageDecoder
-from ffcv.fields.basics import IntDecoder
-
-from typing import List, Tuple, Optional
+from src.conf import Config, DaliConfig
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) * 255
 IMAGENET_STD = np.array([0.229, 0.224, 0.225]) * 255
@@ -215,90 +205,3 @@ def get_dali_valid_loader(cfg: Config):
     return DALIWrapper(valid_loader)
 
 
-def get_ffcv_train_loader(cfg: Config,
-                          distributed: bool = True,
-                          batch_size: Optional[int] = None) -> Tuple[Loader, ResizedCropRGBImageDecoder]:
-    if batch_size is None:
-        batch_size = cfg.train.batch_size_per_local_batch
-    
-    dataloader_cfg = cfg.data.dataloader
-    assert isinstance(dataloader_cfg, FFCVConfig)
-    ffcv_train_data_dir = dataloader_cfg.train_data_dir
-    device = torch.device("cuda")
-    data_type = np.float16 if cfg.train.use_amp else np.float32
-
-    decoder = RandomResizedCropRGBImageDecoder((cfg.train.preprocess.train_crop_size, cfg.train.preprocess.train_crop_size))
-    image_pipeline: List[Operation] = [
-        decoder,
-        RandomHorizontalFlip(),
-        ToTensor(),
-        ToDevice(device, non_blocking=True),
-        ToTorchImage(),
-        NormalizeImage(IMAGENET_MEAN, IMAGENET_STD, data_type) # type: ignore
-    ]
-
-    label_pipeline: List[Operation] = [
-        IntDecoder(),
-        ToTensor(),
-        Squeeze(),
-        ToDevice(device, non_blocking=True)
-    ]
-
-    order = OrderOption.RANDOM
-
-    loader = Loader(ffcv_train_data_dir,
-                    batch_size=batch_size,
-                    num_workers=dataloader_cfg.num_data_workers,
-                    order=order,
-                    os_cache=dataloader_cfg.in_memory,
-                    drop_last=True,
-                    pipelines={
-                        "image": image_pipeline,
-                        "label": label_pipeline
-                    },
-                    distributed=distributed,
-                    seed=cfg.train.reproduce.seed)
-    
-    return loader, decoder
-
-
-def get_ffcv_valid_loader(cfg: Config,
-                          distributed: bool = True,
-                          batch_size: Optional[int] = None) -> Loader:
-    if batch_size is None:
-        batch_size = cfg.train.batch_size_per_local_batch
-
-    dataloader_cfg = cfg.data.dataloader
-    assert isinstance(dataloader_cfg, FFCVConfig)
-    ffcv_valid_data_dir = dataloader_cfg.val_data_dir
-    device = torch.device("cuda")
-    data_type = np.float16 if cfg.train.use_amp else np.float32
-
-    decoder = CenterCropRGBImageDecoder((cfg.train.preprocess.val_crop_size, cfg.train.preprocess.val_crop_size),
-                                        ratio=DEFAULT_CROP_RATIO)
-    image_pipeline: List[Operation] = [
-        decoder,
-        ToTensor(),
-        ToDevice(device, non_blocking=True),
-        ToTorchImage(),
-        NormalizeImage(IMAGENET_MEAN, IMAGENET_STD, data_type) # type: ignore
-    ]
-
-    label_pipeline = [
-        IntDecoder(),
-        ToTensor(),
-        Squeeze(),
-        ToDevice(device, non_blocking=True)
-    ]
-
-    loader = Loader(ffcv_valid_data_dir,
-                    batch_size=batch_size,
-                    num_workers=dataloader_cfg.num_data_workers,
-                    order=OrderOption.SEQUENTIAL,
-                    drop_last=False,
-                    pipelines={
-                        "image": image_pipeline,
-                        "label": label_pipeline
-                    },
-                    distributed=distributed)
-    return loader

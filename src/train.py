@@ -7,6 +7,28 @@
 import os
 import sys
 import subprocess
+import time
+import wandb
+import torch
+import random
+import tomli_w
+import pandas as pd
+from typing import Any, Tuple, cast
+from torch.nn import Module
+import torch.distributed as dist
+from torch.optim import Optimizer
+from torch import GradScaler
+from torch.optim.lr_scheduler import LRScheduler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.profiler import schedule, profile, ProfilerActivity
+from src.conf import parse_config, Config, SCHEDULEFREE_OPTIMS, SGDSAMConfig
+from src.optims import get_optim, get_lr_scheduler
+from src.data.preload import preload_to_local
+from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper
+from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
+from src.models import load_model
+from src.custom_optims.sam import SAM, SAMV1, S2SAM
+from loguru import logger
 
 rank = int(os.environ.get('RANK', 0))
 local_rank = int(os.environ.get('LOCAL_RANK', 0))
@@ -20,35 +42,8 @@ gpu_models = subprocess.check_output('nvidia-smi --query-gpu=name --format=csv,n
 if 'Tesla T4' in gpu_models:
     os.environ['NCCL_IB_HCA'] = '=mlx5_0:1'
 
-from loguru import logger
 logger.remove()
 logger.add(sys.stdout)
-
-import time
-import wandb
-import torch
-import neptune
-from neptune import Run
-from neptune.integrations.python_logger import NeptuneHandler
-import random
-import tomli_w
-import pandas as pd
-from typing import Any, Tuple, cast, Optional
-from torch.nn import Module
-import torch.distributed as dist
-from torch.optim import Optimizer
-from torch import GradScaler
-from torch.optim.lr_scheduler import LRScheduler
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.profiler import schedule, profile, ProfilerActivity
-from src.conf import parse_config, Config, SCHEDULEFREE_OPTIMS, SGDSAMConfig
-from src.optims import get_optim, get_lr_scheduler
-from src.data.preload import preload_to_local
-from src.data.dataloader import get_dali_train_loader, get_dali_valid_loader, DALIWrapper, get_ffcv_train_loader, get_ffcv_valid_loader
-from ffcv.loader import Loader
-from src.utils import initialize_dist, gather_statistics, SmoothedValue, get_accuracy, sync_model_buffers
-from src.models import load_model
-from src.custom_optims.sam import SAM, SAMV1, S2SAM
 
 '''
     Functions
@@ -59,15 +54,14 @@ def is_schedule_free_optim(cfg: Config) -> bool:
 
 def train_epoch(cfg: Config,
                 model: DDP,
-                train_ds: DALIWrapper | Loader,
+                train_ds: DALIWrapper,
                 criterion: Module,
                 optimizer: Optimizer,
                 lr_scheduler: LRScheduler,
                 epoch: int,
                 step: int,
                 scaler: GradScaler,
-                profiler: Any,
-                neptune_run: Optional[Run]) -> Tuple[float, int, float]:
+                profiler: Any) -> Tuple[float, int, float]:
     start_time = time.time()
     model.train()
     if is_schedule_free_optim(cfg):
@@ -104,10 +98,6 @@ def train_epoch(cfg: Config,
         if rank == 0:
             if cfg.train.log.wandb_on and (step % cfg.train.log.log_freq == 0):
                 wandb.log({'loss': loss_metric.avg, 'lr': lr}, step=step)
-            if cfg.train.log.neptune_on and (step % cfg.train.log.log_freq == 0):
-                assert neptune_run is not None
-                neptune_run['train/loss'].append(value=loss_metric.avg, step=step)
-                neptune_run['train/lr'].append(value=lr, step=step)
             if step % cfg.train.log.log_freq == 0:
                 throughput_metric.update((images.size(0) * cfg.train.network.world_size) / (time.time() - iter_start_time), images.size(0))
                 logger.info(f'step: {step} ({throughput_metric.avg:5.2f} imgs/s), loss: {loss_metric.avg:.6f}' + \
@@ -118,15 +108,14 @@ def train_epoch(cfg: Config,
 
 def train_epoch_for_sam(cfg: Config,
                         model: DDP,
-                        train_ds: DALIWrapper | Loader,
+                        train_ds: DALIWrapper,
                         criterion: Module,
                         optimizer: SAM | SAMV1 | S2SAM,
                         lr_scheduler: LRScheduler,
                         epoch: int,
                         step: int,
                         scaler: GradScaler,
-                        profiler: Any,
-                        neptune_run: Optional[Run]) -> Tuple[float, int, float]:
+                        profiler: Any) -> Tuple[float, int, float]:
     optim_cfg = cast(SGDSAMConfig, cfg.train.optim)
     assert cfg.train.grad_clip_norm == 0
     start_time = time.time()
@@ -177,10 +166,6 @@ def train_epoch_for_sam(cfg: Config,
         if rank == 0:
             if cfg.train.log.wandb_on and (step % cfg.train.log.log_freq == 0):
                 wandb.log({'loss': loss_metric.avg, 'lr': lr}, step=step)
-            if cfg.train.log.neptune_on and (step % cfg.train.log.log_freq == 0):
-                assert neptune_run is not None
-                neptune_run['train/loss'].append(value=loss_metric.avg, step=step)
-                neptune_run['train/lr'].append(value=lr, step=step)
             if step % cfg.train.log.log_freq == 0:
                 throughput_metric.update((images.size(0) * cfg.train.network.world_size) / (time.time() - iter_start_time), images.size(0))
                 logger.info(f'step: {step} ({throughput_metric.avg:5.2f} imgs/s), loss: {loss_metric.avg:.6f}' + \
@@ -189,7 +174,7 @@ def train_epoch_for_sam(cfg: Config,
         del images, labels, pred, loss
     return loss_metric.global_avg, step, time.time() - start_time
 
-def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) -> None:
+def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper) -> None:
     model.train()
     cnt = 0
     for images, _ in stats_ds:
@@ -203,8 +188,8 @@ def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIWrapper | Loader) ->
 def valid(cfg: Config,
           model: Any,
           optimizer: Optimizer,
-          stats_ds: DALIWrapper | Loader,
-          valid_ds: DALIWrapper | Loader,
+          stats_ds: DALIWrapper,
+          valid_ds: DALIWrapper,
           criterion: Module,
           epoch: int) -> Tuple[float, float, float, int]:
     if is_schedule_free_optim(cfg):
@@ -266,9 +251,7 @@ def main():
         train_ds, num_batches = get_dali_train_loader(cfg)
         valid_ds = get_dali_valid_loader(cfg)
     else:
-        train_ds, _ = get_ffcv_train_loader(cfg)
-        valid_ds = get_ffcv_valid_loader(cfg)
-        num_batches = len(train_ds)
+        raise NotImplementedError('Only DALI dataloader is supported currently.')
     logger.info(f'Number of training batches per epoch: {num_batches}')
 
     '''
@@ -290,7 +273,6 @@ def main():
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     scaler = torch.GradScaler(device='cuda', enabled=cfg.train.use_amp)
 
-    neptune_run = None
     if rank == 0:
         if cfg.train.log.wandb_on:
             wandb.init(
@@ -299,19 +281,6 @@ def main():
                 name=cfg.train.log.job_id,
                 dir=os.environ.get('TMPDIR', '/tmp')
             )
-        if cfg.train.log.neptune_on:
-            neptune_run = neptune.init_run(
-                project=cfg.train.log.neptune_workspace + '/' + cfg.train.log.project,
-                name=f"{cfg.train.arch}-{cfg.train.optim.name}-{cfg.train.network.world_size}GPU",
-                tags=[cfg.train.arch, cfg.train.optim.name, f"{cfg.train.network.world_size}GPU", gpu_models[0]],
-                source_files=[],
-                monitoring_namespace='monitoring',
-                capture_hardware_metrics=True,
-                capture_stderr=True,
-                capture_stdout=True
-            )
-            neptune_run['config'] = cfg.model_dump()
-            logger.add(NeptuneHandler(run=neptune_run))
         logger.info(cfg)
         logger.info(model)
         with open(os.path.join(cfg.train.log.log_dir, 'data_cfg.dump.toml'), 'wb') as f:
@@ -347,7 +316,7 @@ def main():
             repeat=1
         ),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            os.path.join(cfg.train.log.log_dir, f'tb_trace'),
+            os.path.join(cfg.train.log.log_dir, 'tb_trace'),
             worker_name=f'worker_{rank:02d}'
         ),
     ) as profiler:
@@ -362,8 +331,7 @@ def main():
                                                                                 epoch,
                                                                                 global_step,
                                                                                 scaler,
-                                                                                profiler,
-                                                                                neptune_run)
+                                                                                profiler)
             else:
                 train_loss, global_step, epoch_train_time = train_epoch(cfg,
                                                                         model,
@@ -374,8 +342,7 @@ def main():
                                                                         epoch,
                                                                         global_step,
                                                                         scaler,
-                                                                        profiler,
-                                                                        neptune_run)
+                                                                        profiler)
             total_train_time += epoch_train_time
             val_loss, val_acc1, val_acc5, val_samples = valid(cfg,
                                                               model,
@@ -416,14 +383,6 @@ def main():
                         'total_train_time': total_train_time
                     }
                     wandb.log(log_data, step=global_step)
-                if cfg.train.log.neptune_on:
-                    assert neptune_run is not None
-                    neptune_run['train/epoch_time'].append(value=epoch_train_time, step=global_step)
-                    neptune_run['val/loss'].append(value=stats[1], step=global_step)
-                    neptune_run['val/acc@1'].append(value=stats[2], step=global_step)
-                    neptune_run['val/acc@5'].append(value=stats[3], step=global_step)
-                    neptune_run['epoch'].append(value=epoch+1, step=global_step)
-                    neptune_run['total_train_time'].append(value=total_train_time, step=global_step)
 
                 train_log.loc[epoch - start_epoch] = [epoch + 1, # type: ignore
                                                       global_step,
@@ -441,9 +400,6 @@ def main():
         logger.info('Training finished.')
         if cfg.train.log.wandb_on:
             wandb.finish()
-        if cfg.train.log.neptune_on:
-            assert neptune_run is not None
-            neptune_run.stop()
 
 if __name__ == '__main__':
     main()

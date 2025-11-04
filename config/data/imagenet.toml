@@ -2,15 +2,7 @@ data_dir = "./data/Imagenet"
 num_classes = 1000
 
 [dataloader]
-name = "ffcv"
-processed_data_dir = "./data/ffcv"
-max_resolution = 500
-compress_probability = 1.0
-jpeg_quality = 90
-num_data_workers = 12
-
-# [dataloader]
-# name = "dali"
-# preload = true
-# sharded_data_dir = "./data/Imagenet-sharded"
-# num_data_workers = 8
+name = "dali"
+preload = true
+sharded_data_dir = "./data/Imagenet-sharded"
+num_data_workers = 8

@@ -1,7 +1,7 @@
 import os
 import argparse
 import tomllib
-from typing import Literal, Optional, Union, Final
+from typing import Literal, Union, Final
 from typing_extensions import TypeAlias
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 
@@ -11,41 +11,17 @@ class _BaseModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
 
-class FFCVConfig(_BaseModel):
-    name: Literal['ffcv'] = 'ffcv'
-    processed_data_dir: str = Field(default=os.path.join(PROJECT_DIR, 'data/ffcv'))
-    max_resolution: int = Field(default=384)
-    compress_probability: float = Field(default=1.0)
-    jpeg_quality: int = Field(default=90)
-    num_data_workers: int = Field(default=12)
-    in_memory: bool = Field(default=True)
-
-    @computed_field
-    @property
-    def tag(self) -> str:
-        return f'ffcv_{self.max_resolution}_{self.compress_probability:.3f}_{self.jpeg_quality}'
-
-    @computed_field
-    @property
-    def train_data_dir(self) -> str:
-        return os.path.join(self.processed_data_dir, self.tag + '_train.ffcv')
-
-    @computed_field
-    @property
-    def val_data_dir(self) -> str:
-        return os.path.join(self.processed_data_dir, self.tag + '_val.ffcv')
-
 class DaliConfig(_BaseModel):
     name: Literal['dali'] = 'dali'
     preload: bool = Field(default=False)
     sharded_data_dir: str = Field(default='./data/Imagenet-sharded')
     num_data_workers: int = Field(default=4)
 
-ALL_DATALOADERS: TypeAlias = Union[FFCVConfig, DaliConfig]
+ALL_DATALOADERS: TypeAlias = DaliConfig
 
 class Data(_BaseModel):
     data_dir: str = Field(default='./data/Imagenet')
-    dataloader: ALL_DATALOADERS = Field(default_factory=FFCVConfig,
+    dataloader: ALL_DATALOADERS = Field(default_factory=DaliConfig,
                                         discriminator='name')
     num_classes: int = Field(default=1000)
 
@@ -118,8 +94,6 @@ class Reproduce(_BaseModel):
 class Log(_BaseModel):
     log_freq: int = Field(default=100)
     wandb_on: bool = Field(default=False)
-    neptune_on: bool = Field(default=True)
-    neptune_workspace: str = Field(default=os.environ['NEPTUNE_WORKSPACE'])
     project: str = Field(default='imagenet-baselines')
     checkpoint_freq: int = Field(default=45)
 
