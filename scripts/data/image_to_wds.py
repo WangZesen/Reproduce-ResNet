@@ -1,5 +1,7 @@
 import os
 import io
+import sys
+import subprocess
 import tarfile
 import json
 import random
@@ -46,7 +48,7 @@ def write_shard(args):
     with tarfile.open(tar_path, "w") as tar:
         for i, (img_path, class_idx) in enumerate(samples):
             img_bytes, cls_idx, meta_bytes, meta = process_sample(img_path, class_idx, split_root)
-            if img_bytes is None:
+            if (img_bytes is None) or (meta_bytes is None):
                 continue
 
             # 写图像
@@ -121,8 +123,8 @@ def main(args):
     output_dir = args.output_dir
     splits = []
 
-    # if os.path.isdir(os.path.join(input_dir, "train")):
-    #     splits.append(("train", os.path.join(input_dir, "train")))
+    if os.path.isdir(os.path.join(input_dir, "train")):
+        splits.append(("train", os.path.join(input_dir, "train")))
     if os.path.isdir(os.path.join(input_dir, "val")):
         splits.append(("val", os.path.join(input_dir, "val")))
 
@@ -139,6 +141,16 @@ def main(args):
             shuffle=(split_name=="train"),
             seed=args.seed
         )
+    
+    tar_files = glob(os.path.join(output_dir, "*.tar"))
+    # create index files
+    
+    # get the python executable
+    python_executable = sys.executable
+    for tar_file in tqdm(sorted(tar_files)):
+        cmd = f'"{python_executable}" -m wds2idx "{tar_file}" "{tar_file}.idx"'
+        subprocess.check_call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print("✅ All done.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert ImageNet to WebDataset (fixed shards + JSON inside tar)")
