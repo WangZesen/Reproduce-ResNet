@@ -121,8 +121,8 @@ def main(args):
     output_dir = args.output_dir
     splits = []
 
-    if os.path.isdir(os.path.join(input_dir, "train")):
-        splits.append(("train", os.path.join(input_dir, "train")))
+    # if os.path.isdir(os.path.join(input_dir, "train")):
+    #     splits.append(("train", os.path.join(input_dir, "train")))
     if os.path.isdir(os.path.join(input_dir, "val")):
         splits.append(("val", os.path.join(input_dir, "val")))
 
@@ -134,7 +134,7 @@ def main(args):
             split_name,
             split_dir,
             output_dir,
-            num_shards=args.num_shards,
+            num_shards=args.num_shards if split_name=="train" else 64,
             num_workers=args.num_workers,
             shuffle=(split_name=="train"),
             seed=args.seed
