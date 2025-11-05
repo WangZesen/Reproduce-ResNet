@@ -1,5 +1,6 @@
 import torchvision
 
+
 def load_model(model: str, num_classes: int = 1000, pretrained: bool = False):
     match model:
         case "resnet18":

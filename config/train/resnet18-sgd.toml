@@ -6,11 +6,11 @@ arch = "resnet18"
 use_amp = true
 
 [preprocess]
-preload_local = true
 interpolation = "bilinear"
 train_crop_size = 176
 val_image_size = 256
 val_crop_size = 224
+dali_cpu = true
 
 [optim]
 name = 'sgd'
@@ -28,5 +28,5 @@ seed = 810977
 [log]
 log_freq = 100
 wandb_on = true
-project = "imagenet-baselines"
+project = "reproduce_resnet"
 checkpoint_freq = 45

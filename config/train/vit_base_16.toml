@@ -8,7 +8,6 @@ use_amp = true
 clip_grad_norm = 1.0
 
 [preprocess]
-preload_local = true
 interpolation = "bilinear"
 train_crop_size = 224
 val_image_size = 256
@@ -38,5 +37,5 @@ seed = 810975
 log_dir = './log'
 log_freq = 100
 wandb_on = true
-wandb_project = "reproduce-ImageCls"
+wandb_project = "reproduce_resnet"
 checkpoint_freq = 45

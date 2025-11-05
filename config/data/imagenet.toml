@@ -1,8 +1,6 @@
-data_dir = "./data/Imagenet"
+data_dir = "./data/imagenet-1k-wds"
 num_classes = 1000
 
 [dataloader]
 name = "dali"
-preload = true
-sharded_data_dir = "./data/Imagenet-sharded"
 num_data_workers = 8

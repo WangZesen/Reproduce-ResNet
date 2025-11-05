@@ -24,8 +24,8 @@ class SmoothedValue:
 
     @property
     def avg(self):
-        count = 0.
-        total = 0.
+        count = 0.0
+        total = 0.0
         for i in reversed(range(len(self.deque))):
             if count + self.deque[i][1] >= self.window_size:
                 total += self.deque[i][0] * (self.window_size - count)
@@ -46,11 +46,9 @@ class SmoothedValue:
 
 
 @torch.no_grad()
-def get_accuracy(output, target, topk=(1,)):
+def get_accuracy(output: torch.Tensor, target: torch.Tensor, topk=(1,)):
     maxk = max(topk)
     batch_size = target.size(0)
-    if target.ndim == 2:
-        target = target.max(dim=1)[1]
     _, pred = output.topk(maxk, 1, True, True)
     pred = pred.t()
     correct = pred.eq(target[None])
@@ -75,7 +73,7 @@ def gather_statistics(train_loss, val_loss, val_acc1, val_acc5, val_samples) -> 
         object_list = [None for _ in range(dist.get_world_size())]
         dist.all_gather_object(object_list, log)
         object_list = cast(List[List[float]], object_list)
-        
+
         log[0] = mean([x[0] for x in object_list])
         total_val_samples = sum([x[4] for x in object_list])
         log[1] = sum([x[1] for x in object_list]) / total_val_samples

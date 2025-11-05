@@ -6,7 +6,6 @@ arch = "resnet50"
 use_amp = true
 
 [preprocess]
-preload_local = true
 interpolation = "bilinear"
 train_crop_size = 176
 val_image_size = 256

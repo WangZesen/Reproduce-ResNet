@@ -4,6 +4,7 @@
 import torch
 from typing import List
 
+
 class SAM(torch.optim.Optimizer):
     def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, v2=True, **kwargs):
         assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"
@@ -28,11 +29,13 @@ class SAM(torch.optim.Optimizer):
                 else:
                     grad = p.grad
                     prev_p = p
-                if p.grad is None: continue
+                if p.grad is None:
+                    continue
                 e_w = (torch.pow(prev_p, 2) if group["adaptive"] else 1.0) * grad * scale.to(p)
                 p.add_(e_w)  # climb to the local maximum "w + e(w)"
                 self.state[p]["e_w"] = e_w
-        if zero_grad: self.zero_grad()
+        if zero_grad:
+            self.zero_grad()
 
     @torch.no_grad()
     def second_step(self, zero_grad=False):
@@ -41,26 +44,39 @@ class SAM(torch.optim.Optimizer):
                 if self.v2:
                     self.state[p]["prev_grad"] = torch.clone(p.grad)
                     self.state[p]["prev_u"] = torch.clone(p)
-                if p.grad is None: continue
+                if p.grad is None:
+                    continue
                 if "e_w" in self.state[p]:
                     p.sub_(self.state[p]["e_w"])  # get back to "w" from "w + e(w)"
 
         self.base_optimizer.step()  # do the actual "sharpness-aware" update
 
-        if zero_grad: self.zero_grad()
+        if zero_grad:
+            self.zero_grad()
 
     @torch.no_grad()
-    def step(self, closure=None): # type: ignore
+    def step(self, closure=None):  # type: ignore
         assert closure is None
         self.second_step(zero_grad=False)
 
     def _grad_norm(self):
-        shared_device = self.param_groups[0]["params"][0].device  # put everything on the same device, in case of model parallelism
+        shared_device = self.param_groups[0]["params"][
+            0
+        ].device  # put everything on the same device, in case of model parallelism
 
         grad_list = [
-            ((torch.abs((self.state[p]["prev_u"] if (self.v2 and "prev_u" in self.state[p]) else p)) if group["adaptive"] else 1.0) *
-             (self.state[p]["prev_grad"] if (self.v2 and "prev_grad" in self.state[p]) else p.grad)).norm(p=2).to(shared_device)
-            for group in self.param_groups for p in group["params"]
+            (
+                (
+                    torch.abs((self.state[p]["prev_u"] if (self.v2 and "prev_u" in self.state[p]) else p))
+                    if group["adaptive"]
+                    else 1.0
+                )
+                * (self.state[p]["prev_grad"] if (self.v2 and "prev_grad" in self.state[p]) else p.grad)
+            )
+            .norm(p=2)
+            .to(shared_device)
+            for group in self.param_groups
+            for p in group["params"]
             if p.grad is not None
         ]
 
@@ -87,7 +103,7 @@ class S2SAM(torch.optim.Optimizer):
         last_grads = []
         for group in self.param_groups:
             for p in group["params"]:
-                if not ("last_grad" in self.state[p]):
+                if "last_grad" not in self.state[p]:
                     self.state[p]["last_grad"] = torch.empty_like(p)
 
         grad_norm = self._grad_norm(last_grads)
@@ -98,11 +114,11 @@ class S2SAM(torch.optim.Optimizer):
 
         for group in self.param_groups:
             for p in group["params"]:
-                if not ("cached_p" in self.state[p]):
+                if "cached_p" not in self.state[p]:
                     self.state[p]["cached_p"] = torch.empty_like(p)
                 cached_params.append(self.state[p]["cached_p"])
                 params.append(p)
-        
+
         torch._foreach_copy_(cached_params, params)
 
         if len(last_grads) > 0:
@@ -116,7 +132,8 @@ class S2SAM(torch.optim.Optimizer):
         last_grads = []
         for group in self.param_groups:
             for p in group["params"]:
-                if p.grad is None: continue
+                if p.grad is None:
+                    continue
                 params.append(p)
                 cached_params.append(self.state[p]["cached_p"])
                 grads.append(p.grad)
@@ -131,9 +148,7 @@ class S2SAM(torch.optim.Optimizer):
         self.base_optimizer.step()
 
     def _grad_norm(self, grads: List[torch.Tensor]) -> torch.Tensor | float:
-        grad_norm_list = [
-            g.norm(p=2) for g in grads
-        ]
+        grad_norm_list = [g.norm(p=2) for g in grads]
 
         if len(grad_norm_list) == 0:
             return 0
@@ -163,13 +178,14 @@ class SAMV1(torch.optim.Optimizer):
 
         for group in self.param_groups:
             for p in group["params"]:
-                if p.grad is None: continue
+                if p.grad is None:
+                    continue
                 params.append(p)
                 grads.append(p.grad)
-                if not ("cached_p" in self.state[p]):
+                if "cached_p" not in self.state[p]:
                     self.state[p]["cached_p"] = torch.empty_like(p)
                 cached_params.append(self.state[p]["cached_p"])
-        
+
         torch._foreach_copy_(cached_params, params)
         torch._foreach_add_(params, grads, alpha=scale)
 
@@ -180,19 +196,23 @@ class SAMV1(torch.optim.Optimizer):
 
         for group in self.param_groups:
             for p in group["params"]:
-                if p.grad is None: continue
+                if p.grad is None:
+                    continue
                 params.append(p)
                 cached_params.append(self.state[p]["cached_p"])
-        
+
         torch._foreach_copy_(params, cached_params)
         self.base_optimizer.step()  # do the actual "sharpness-aware" update
 
     def _grad_norm(self):
-        shared_device = self.param_groups[0]["params"][0].device  # put everything on the same device, in case of model parallelism
+        shared_device = self.param_groups[0]["params"][
+            0
+        ].device  # put everything on the same device, in case of model parallelism
 
         grad_list = [
             p.grad.norm(p=2).to(shared_device)
-            for group in self.param_groups for p in group["params"]
+            for group in self.param_groups
+            for p in group["params"]
             if p.grad is not None
         ]
 

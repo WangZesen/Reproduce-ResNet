@@ -6,11 +6,11 @@ arch = "resnet18"
 use_amp = false
 
 [preprocess]
-preload_local = true
 interpolation = "bilinear"
 train_crop_size = 176
 val_image_size = 256
 val_crop_size = 224
+dali_cpu = true
 
 [optim]
 name = 'sgd-sam'
