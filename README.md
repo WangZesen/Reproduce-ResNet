@@ -23,9 +23,9 @@ The repository implements various optimization algorithms:
 - **SGD** - Stochastic gradient descent with momentum
 - **Schedule-Free SGD** - Schedule-free variant of SGD [1]
 - **Schedule-Free AdamW** - Schedule-free variant of AdamW [1]
-- **SAM (Sharpness-Aware Minimization)** - Both original two-step SAM (v1) and single-step SAM (v2) [2]
+- **SAM (Sharpness-Aware Minimization)** - Both original two-step SAM (v1) and adaptive SAM (v2) [2]
 
-## Results
+## Results (To be updated)
 
 For ResNet-50 trained on ImageNet using various optimizers, and without complex data augmentation (only random cropping and random horizontal flipping are used in this repo), we achieve the following top-1 accuracy:
 
@@ -95,9 +95,13 @@ data/Imagenet/
 │   ├── ...
 ```
 
-#### DALI Dataloader
+#### Convert to WebDataset format
 
-No further processing is needed for the DALI dataloader.
+```bash
+uv run scripts/data/image_to_wds.py --input-dir data/Imagenet/ --output-dir data/imagenet-1k-wds --num-shards 1024
+```
+
+The converted dataset will be at `./data/imagenet-1k-wds`, which is also the default data dir when training.
 
 ### Training
 
@@ -109,7 +113,7 @@ sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data
 
 Where `<PROJECT_ACCOUNT>` is your Slurm project account.
 
-For systems not based on Slurm, you can extract the command from [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh) to run separately.
+For systems not based on Slurm, you can run [`scripts/train/local.sh`](./scripts/train/local.sh) to run on the local server with multiple GPUs or extract the command from [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh) to make your script.
 
 Evaluation on the validation set is performed along with training.
 
@@ -148,10 +152,8 @@ sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh $(which torchrun) config/data
 The repository provides scripts for various hardware configurations:
 - [`scripts/train/4xA40.sh`](./scripts/train/4xA40.sh): 4x A40 GPUs
 - [`scripts/train/4xA100.sh`](./scripts/train/4xA100.sh): 4x A100 GPUs
-- [`scripts/train/4xV100.sh`](./scripts/train/4xV100.sh): 4x V100 GPUs
 - [`scripts/train/8xA40.sh`](./scripts/train/8xA40.sh): 8x A40 GPUs
 - [`scripts/train/8xA100.sh`](./scripts/train/8xA100.sh): 8x A100 GPUs
-- [`scripts/train/8xV100.sh`](./scripts/train/8xV100.sh): 8x V100 GPUs
 - [`scripts/train/16xA40.sh`](./scripts/train/16xA40.sh): 16x A40 GPUs
 - [`scripts/train/16xA100.sh`](./scripts/train/16xA100.sh): 16x A100 GPUs
 - [`scripts/train/32xT4.sh`](./scripts/train/32xT4.sh): 32x T4 GPUs
