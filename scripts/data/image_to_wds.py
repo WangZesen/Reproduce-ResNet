@@ -6,6 +6,7 @@ import tarfile
 import json
 import random
 import argparse
+import struct
 from glob import glob
 from tqdm import tqdm
 from PIL import Image
@@ -58,8 +59,8 @@ def write_shard(args):
 
             # 写类别
             cls_info = tarfile.TarInfo(f"{i:08d}.cls")
-            cls_bytes = str(cls_idx).encode("utf-8")
-            cls_info.size = len(cls_bytes)
+            cls_info.size = 8
+            cls_bytes = struct.pack("<q", cls_idx)
             tar.addfile(cls_info, io.BytesIO(cls_bytes))
 
             # 写元数据 JSON
