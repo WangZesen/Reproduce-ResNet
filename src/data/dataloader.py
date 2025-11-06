@@ -67,6 +67,7 @@ def image_processing_func(images, image_size, interpolation, is_training, decode
 def create_dali_pipeline(
     shards_list: List[str],
     index_list: List[str],
+    base_seed: int,
     image_size: int,
     interpolation: str,
     shard_id: int,
@@ -88,6 +89,7 @@ def create_dali_pipeline(
         dont_use_mmap=True,
         initial_fill=20000,
         read_ahead=is_training,
+        seed=base_seed,
     )
     decoder_device = "cpu" if dali_cpu else "mixed"
     images = image_processing_func(images, image_size, interpolation, is_training, decoder_device)
@@ -103,8 +105,10 @@ def get_dali_train_loader(cfg: Config):
         num_threads=cfg.data.dataloader.num_data_workers,
         batch_size=cfg.train.batch_size_per_local_batch,
         device_id=0,
+        seed=cfg.train.reproduce.seed * 10007 + cfg.train.network.rank,
         shards_list=shards_list,
         index_list=index_list,
+        base_seed=cfg.train.reproduce.seed,
         image_size=cfg.train.preprocess.train_crop_size,
         interpolation=cfg.train.preprocess.interpolation,
         shard_id=cfg.train.network.rank,
@@ -132,8 +136,10 @@ def get_dali_valid_loader(cfg: Config):
         num_threads=cfg.data.dataloader.num_data_workers,
         batch_size=cfg.train.batch_size_per_local_batch,
         device_id=0,
+        seed=cfg.train.reproduce.seed * 10007 + cfg.train.network.rank,
         shards_list=shards_list,
         index_list=index_list,
+        base_seed=cfg.train.reproduce.seed,
         image_size=cfg.train.preprocess.val_crop_size,
         interpolation=cfg.train.preprocess.interpolation,
         shard_id=cfg.train.network.rank,
