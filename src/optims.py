@@ -18,14 +18,24 @@ from functools import partial
 
 
 def get_param_groups(model: nn.Module, weight_decay: float) -> list:
-    non_decay_params = [v for n, v in model.named_parameters() if ("bn" in n) or ("bias" in n)]
-    decay_params = [v for n, v in model.named_parameters() if not (("bn" in n) or ("bias" in n))]
+    non_decay_params = []
+    decay_params = []
+    for n, v in model.named_parameters():
+        if ("bn" in n) or ("bias" in n):
+            non_decay_params.append(v)
+        else:
+            decay_params.append(v)
     return [{"params": non_decay_params, "weight_decay": 0}, {"params": decay_params, "weight_decay": weight_decay}]
 
 
 def get_param_groups_from_list(params: List[Tuple[torch.Tensor, str]], weight_decay: float) -> list:
-    non_decay_params = [v for v, n in params if ("bn" in n) or ("bias" in n)]
-    decay_params = [v for v, n in params if not (("bn" in n) or ("bias" in n))]
+    non_decay_params = []
+    decay_params = []
+    for v, n in params:
+        if ("bn" in n) or ("bias" in n):
+            non_decay_params.append(v)
+        else:
+            decay_params.append(v)
     return [{"params": non_decay_params, "weight_decay": 0}, {"params": decay_params, "weight_decay": weight_decay}]
 
 
