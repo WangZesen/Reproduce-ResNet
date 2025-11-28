@@ -71,7 +71,8 @@ def train_epoch(
 ) -> Tuple[float, int, float]:
     start_time = time.time()
     model.train()
-    if is_schedule_free_optim(cfg):
+    use_schedule_free = is_schedule_free_optim(cfg)
+    if use_schedule_free:
         optimizer.train()  # type: ignore
 
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
@@ -84,7 +85,7 @@ def train_epoch(
         images = data[0]["data"]
         labels = data[0]["label"]
         # Forward pass
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type="cuda", enabled=cfg.train.use_amp):
             pred = model(images)
             loss = criterion(pred, labels.view(-1))
@@ -102,9 +103,9 @@ def train_epoch(
         _loss = loss.detach().item()
         loss_metric.update(_loss)
         lr = (
-            optimizer.param_groups[0]["lr"]
-            if not is_schedule_free_optim(cfg)
-            else optimizer.param_groups[0]["scheduled_lr"]
+            optimizer.param_groups[0]["scheduled_lr"]
+            if use_schedule_free
+            else optimizer.param_groups[0]["lr"]
         )
         step += 1
 
@@ -140,6 +141,7 @@ def train_epoch_for_sam(
     assert cfg.train.grad_clip_norm == 0
     start_time = time.time()
     model.train()
+    use_schedule_free = is_schedule_free_optim(cfg)
 
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
     throughput_metric = SmoothedValue(cfg.train.log.log_freq)
@@ -160,10 +162,10 @@ def train_epoch_for_sam(
                 scaler.unscale_(optimizer)
                 optimizer.first_step()
                 scaler.update()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
         else:
             optimizer.first_step()
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
         # Forward pass
         with torch.autocast(device_type="cuda", enabled=cfg.train.use_amp):
@@ -176,16 +178,16 @@ def train_epoch_for_sam(
         # Second step
         optimizer.second_step()
         scaler.update()
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
 
         lr_scheduler.step()
         # Update metrics
         _loss = loss.detach().item()
         loss_metric.update(_loss)
         lr = (
-            optimizer.param_groups[0]["lr"]
-            if not is_schedule_free_optim(cfg)
-            else optimizer.param_groups[0]["scheduled_lr"]
+            optimizer.param_groups[0]["scheduled_lr"]
+            if use_schedule_free
+            else optimizer.param_groups[0]["lr"]
         )
         step += 1
 
@@ -210,11 +212,12 @@ def collect_bn_stats(cfg: Config, model: Any, stats_ds: DALIGenericIterator) -> 
     cnt = 0
     for data in stats_ds:
         images = data[0]["data"]
-        if cnt < cfg.train.num_samples_for_stats:
-            with torch.autocast(device_type="cuda", enabled=cfg.train.use_amp):
-                with torch.no_grad():
-                    model(images)
-            cnt += images.size(0) * cfg.train.network.world_size
+        if cnt >= cfg.train.num_samples_for_stats:
+            break
+        with torch.autocast(device_type="cuda", enabled=cfg.train.use_amp):
+            with torch.no_grad():
+                model(images)
+        cnt += images.size(0) * cfg.train.network.world_size
 
 
 @torch.no_grad()

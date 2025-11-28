@@ -148,13 +148,10 @@ class S2SAM(torch.optim.Optimizer):
         self.base_optimizer.step()
 
     def _grad_norm(self, grads: List[torch.Tensor]) -> torch.Tensor | float:
-        grad_norm_list = [g.norm(p=2) for g in grads]
-
-        if len(grad_norm_list) == 0:
+        if len(grads) == 0:
             return 0
-        stack = torch.stack(grad_norm_list)
-        norm = torch.norm(stack, p=2)
-        return norm
+        norms = torch._foreach_norm(grads)
+        return torch.linalg.vector_norm(torch.stack(norms))
 
 
 class SAMV1(torch.optim.Optimizer):
@@ -205,20 +202,14 @@ class SAMV1(torch.optim.Optimizer):
         self.base_optimizer.step()  # do the actual "sharpness-aware" update
 
     def _grad_norm(self):
-        shared_device = self.param_groups[0]["params"][
-            0
-        ].device  # put everything on the same device, in case of model parallelism
-
-        grad_list = [
-            p.grad.norm(p=2).to(shared_device)
+        grads = [
+            p.grad
             for group in self.param_groups
             for p in group["params"]
             if p.grad is not None
         ]
 
-        if len(grad_list) == 0:
+        if len(grads) == 0:
             return 0
-        stack = torch.stack(grad_list)
-        norm = torch.norm(stack, p=2)
-
-        return norm
+        norms = torch._foreach_norm(grads)
+        return torch.linalg.vector_norm(torch.stack(norms))

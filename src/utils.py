@@ -16,26 +16,27 @@ class SmoothedValue:
         self.count = 0
         self.window_size = window_size
         self.fmt = fmt
+        # Track window sum and count for O(1) avg computation
+        self._window_total = 0.0
+        self._window_count = 0
 
     def update(self, value, n=1):
+        # Remove oldest entry from window tracking if deque is at capacity
+        if len(self.deque) == self.window_size:
+            old_value, old_n = self.deque[0]
+            self._window_total -= old_value * old_n
+            self._window_count -= old_n
         self.deque.append((value, n))
         self.count += n
         self.total += value * n
+        self._window_total += value * n
+        self._window_count += n
 
     @property
     def avg(self):
-        count = 0.0
-        total = 0.0
-        for i in reversed(range(len(self.deque))):
-            if count + self.deque[i][1] >= self.window_size:
-                total += self.deque[i][0] * (self.window_size - count)
-                count = self.window_size
-                break
-            count += self.deque[i][1]
-            total += self.deque[i][0] * self.deque[i][1]
-        if count == 0:
+        if self._window_count == 0:
             return 0
-        return total / count
+        return self._window_total / self._window_count
 
     @property
     def global_avg(self):
